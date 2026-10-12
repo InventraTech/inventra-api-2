@@ -40,7 +40,7 @@ class AuthControllerTest {
     @Test
     void loginSucceedsWithValidCredentials() throws Exception {
         UserResponse user = new UserResponse(UUID.randomUUID(), "Maria Silva", "maria.silva@inventra.com",
-                null, new UserResponse.ProfileSummary(1, "ADMIN"), true, null, LocalDateTime.now());
+                null, new UserResponse.ProfileSummary(1, "ADMIN"), true, true, null, LocalDateTime.now());
         when(authUseCase.login(any())).thenReturn(new LoginResponse("token123", "Bearer", 3600L, user));
 
         mockMvc.perform(post("/api/auth/login")

@@ -24,6 +24,7 @@ import lombok.RequiredArgsConstructor;
 // Chaves:
 //   kar:{id}               hash do pedido; com TTL enquanto PENDING, sem TTL depois de decidido
 //   kar:user:{userId}      id do pedido mais recente do usuário
+//   kar:user:{userId}:kitchens   hash kitchenId -> id do pedido mais recente do usuário naquela cozinha
 //   kar:kitchen:{id}       sorted set (score = criação) com os pedidos da cozinha
 // Quando um pedido pendente expira, o id fica no sorted set da cozinha; a limpeza é feita na leitura.
 @Component
@@ -34,6 +35,7 @@ public class RedisKitchenAccessRequestStore implements KitchenAccessRequestStore
     private static final String REQUEST_PREFIX = "kar:";
     private static final String USER_PREFIX = "kar:user:";
     private static final String KITCHEN_PREFIX = "kar:kitchen:";
+    private static final String USER_KITCHENS_SUFFIX = ":kitchens";
 
     // Compare-and-set atômico: só decide se ainda estiver PENDING e tira o TTL na mesma operação.
     private static final DefaultRedisScript<Long> DECIDE_SCRIPT = new DefaultRedisScript<>("""
@@ -62,6 +64,8 @@ public class RedisKitchenAccessRequestStore implements KitchenAccessRequestStore
         redis.expire(key, ttl);
 
         redis.opsForValue().set(USER_PREFIX + request.userId(), request.id());
+        redis.opsForHash().put(USER_PREFIX + request.userId() + USER_KITCHENS_SUFFIX,
+                String.valueOf(request.kitchenId()), request.id());
         redis.opsForZSet().add(KITCHEN_PREFIX + request.kitchenId(), request.id(), request.createdAt().toEpochMilli());
     }
 
@@ -89,6 +93,21 @@ public class RedisKitchenAccessRequestStore implements KitchenAccessRequestStore
     public Optional<KitchenAccessRequest> findLatestByUser(UUID userId) {
         String id = redis.opsForValue().get(USER_PREFIX + userId);
         return id == null ? Optional.empty() : find(id);
+    }
+
+    @Override
+    public Map<Integer, KitchenAccessRequest> findLatestByUserPerKitchen(UUID userId) {
+        String key = USER_PREFIX + userId + USER_KITCHENS_SUFFIX;
+        Map<Integer, KitchenAccessRequest> latest = new HashMap<>();
+        redis.opsForHash().entries(key).forEach((kitchenId, requestId) -> {
+            Optional<KitchenAccessRequest> request = find((String) requestId);
+            if (request.isPresent()) {
+                latest.put(Integer.valueOf((String) kitchenId), request.get());
+            } else {
+                redis.opsForHash().delete(key, kitchenId);
+            }
+        });
+        return latest;
     }
 
     @Override

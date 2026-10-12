@@ -24,7 +24,12 @@ public interface RequisitionRepository extends JpaRepository<Requisition, Intege
     @EntityGraph(attributePaths = {"kitchen", "requester", "approver"})
     List<Requisition> findByKitchenIdAndRequesterId(Integer kitchenId, UUID requesterId);
 
-    // Procedures criadas em V002__business_rules.sql. clearAutomatically descarta as entidades em memória,
+    @EntityGraph(attributePaths = {"kitchen", "requester", "approver"})
+    List<Requisition> findByKitchenIdAndStatusAndRequesterId(Integer kitchenId, RequisitionStatus status,
+                                                             UUID requesterId);
+
+    // Procedures criadas em V002__business_rules.sql (sp_cancel_requisition foi recriada em
+    // V009__requisition_draft.sql). clearAutomatically descarta as entidades em memória,
     // já que a procedure (e os triggers) alteram a linha direto no banco.
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query(value = "CALL sp_approve_requisition(:requisitionId, :approverId)", nativeQuery = true)
@@ -36,6 +41,7 @@ public interface RequisitionRepository extends JpaRepository<Requisition, Intege
                                @Param("reason") String reason);
 
     @Modifying(flushAutomatically = true, clearAutomatically = true)
-    @Query(value = "CALL sp_cancel_requisition(:requisitionId, :reason)", nativeQuery = true)
-    void callCancelRequisition(@Param("requisitionId") Integer requisitionId, @Param("reason") String reason);
+    @Query(value = "CALL sp_cancel_requisition(:requisitionId, :reason, :userId)", nativeQuery = true)
+    void callCancelRequisition(@Param("requisitionId") Integer requisitionId, @Param("reason") String reason,
+                               @Param("userId") UUID userId);
 }

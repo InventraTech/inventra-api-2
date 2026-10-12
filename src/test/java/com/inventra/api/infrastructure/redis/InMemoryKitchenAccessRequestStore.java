@@ -3,6 +3,7 @@ package com.inventra.api.infrastructure.redis;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -23,11 +24,22 @@ public class InMemoryKitchenAccessRequestStore implements KitchenAccessRequestSt
 
     private final Map<String, KitchenAccessRequest> requests = new ConcurrentHashMap<>();
     private final Map<UUID, String> latestByUser = new ConcurrentHashMap<>();
+    private final Map<UUID, Map<Integer, String>> latestByUserAndKitchen = new ConcurrentHashMap<>();
 
     @Override
     public void savePending(KitchenAccessRequest request, Duration ttl) {
         requests.put(request.id(), request);
         latestByUser.put(request.userId(), request.id());
+        latestByUserAndKitchen.computeIfAbsent(request.userId(), id -> new ConcurrentHashMap<>())
+                .put(request.kitchenId(), request.id());
+    }
+
+    @Override
+    public Map<Integer, KitchenAccessRequest> findLatestByUserPerKitchen(UUID userId) {
+        Map<Integer, KitchenAccessRequest> latest = new HashMap<>();
+        latestByUserAndKitchen.getOrDefault(userId, Map.of())
+                .forEach((kitchenId, requestId) -> find(requestId).ifPresent(request -> latest.put(kitchenId, request)));
+        return latest;
     }
 
     @Override

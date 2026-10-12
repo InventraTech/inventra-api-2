@@ -3,6 +3,7 @@ package com.inventra.api.core.service.kitchenaccess;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -17,6 +18,10 @@ public interface KitchenAccessRequestStore {
     Optional<KitchenAccessRequest> find(String id);
 
     Optional<KitchenAccessRequest> findLatestByUser(UUID userId);
+
+    // Pedido mais recente do usuário em cada cozinha (kitchenId -> pedido): a descoberta de cozinhas mostra
+    // "pendente" ou "recusado" por cozinha. Pedido pendente que expirou não aparece.
+    Map<Integer, KitchenAccessRequest> findLatestByUserPerKitchen(UUID userId);
 
     // Pedidos da cozinha, do mais novo para o mais antigo; o histórico inclui os já decididos.
     List<KitchenAccessRequest> listByKitchen(Integer kitchenId);

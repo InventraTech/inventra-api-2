@@ -10,9 +10,11 @@ import org.springframework.web.bind.annotation.*;
 import com.inventra.api.core.domain.stock.StockBatch;
 import com.inventra.api.core.service.stockbatch.StockBatchUseCase;
 import com.inventra.api.core.service.stockbatch.model.request.AdjustStockRequest;
+import com.inventra.api.core.service.stockbatch.model.request.ConsumeProductRequest;
 import com.inventra.api.core.service.stockbatch.model.request.ConsumeStockRequest;
 import com.inventra.api.core.service.stockbatch.model.request.RegisterStockEntryRequest;
 import com.inventra.api.core.service.stockbatch.model.request.RestockRequest;
+import com.inventra.api.core.service.stockbatch.model.response.BatchConsumptionResponse;
 import com.inventra.api.core.service.stockbatch.model.response.LowStockAlertResponse;
 import com.inventra.api.core.service.stockbatch.model.response.StockBatchResponse;
 import com.inventra.api.infrastructure.security.Roles;
@@ -76,11 +78,20 @@ public class StockBatchController {
         return ResponseEntity.ok(useCase.findLowStock());
     }
 
+    @Operation(summary = "Baixa quantidade de um produto, tirando dos lotes que vencem primeiro",
+            description = "Devolve os lotes afetados com o saldo novo. Se o saldo da cozinha não cobre a "
+                    + "quantidade, responde 409 e nada é baixado. reason: USAGE (padrão), LOSS ou EXPIRED.")
+    @PostMapping("/consume")
+    public ResponseEntity<List<BatchConsumptionResponse>> consumeProduct(
+            @Valid @RequestBody ConsumeProductRequest request) {
+        return ResponseEntity.ok(useCase.consumeProduct(request));
+    }
+
     @Operation(summary = "Baixa quantidade do lote (procedure sp_write_off_stock)")
     @PatchMapping("/{id}/consume")
     public ResponseEntity<StockBatchResponse> consume(@PathVariable Integer id,
                                                        @Valid @RequestBody ConsumeStockRequest request) {
-        StockBatch batch = useCase.consume(id, request.quantity());
+        StockBatch batch = useCase.consume(id, request.quantity(), request.reason());
         return ResponseEntity.ok(StockBatchResponse.fromEntity(batch));
     }
 

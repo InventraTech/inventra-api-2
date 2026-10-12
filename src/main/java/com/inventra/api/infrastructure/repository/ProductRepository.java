@@ -1,6 +1,7 @@
 package com.inventra.api.infrastructure.repository;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -14,6 +15,9 @@ import com.inventra.api.core.domain.product.Product;
 public interface ProductRepository extends JpaRepository<Product, Integer> {
 
     boolean existsByBarcode(String barcode);
+
+    @EntityGraph(attributePaths = {"category", "unit"})
+    Optional<Product> findByBarcode(String barcode);
 
     boolean existsByCategoryId(Integer categoryId);
 

@@ -2,7 +2,14 @@ package com.inventra.api.infrastructure.exception;
 
 import java.io.IOException;
 import java.sql.SQLException;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.util.Arrays;
 import java.util.List;
+import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,6 +36,10 @@ import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.exc.InvalidFormatException;
+import tools.jackson.databind.exc.MismatchedInputException;
+
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -43,6 +54,14 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BusinessRuleException.class)
     public ProblemDetail handleBusinessRule(BusinessRuleException ex) {
         return buildProblem(HttpStatus.CONFLICT, "Conflict", ex.getMessage());
+    }
+
+    @ExceptionHandler(ApiProblemException.class)
+    public ProblemDetail handleApiProblem(ApiProblemException ex) {
+        ProblemDetail problem = buildProblem(ex.getStatus(), ex.getStatus().getReasonPhrase(), ex.getMessage());
+        problem.setProperty("code", ex.getCode());
+        ex.getProperties().forEach(problem::setProperty);
+        return problem;
     }
 
     @ExceptionHandler(TooManyRequestsException.class)
@@ -84,13 +103,15 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ProblemDetail handleNotReadable(HttpMessageNotReadableException ex) {
-        return buildProblem(HttpStatus.BAD_REQUEST, "Bad Request", "Corpo da requisição ausente ou com JSON inválido.");
+        return buildProblem(HttpStatus.BAD_REQUEST, "Bad Request", describeUnreadableBody(ex));
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ProblemDetail handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
-        return buildProblem(HttpStatus.BAD_REQUEST, "Bad Request",
-                "Valor inválido para o parâmetro '" + ex.getName() + "'.");
+        StringBuilder detail = new StringBuilder("Valor inválido '").append(ex.getValue())
+                .append("' para o parâmetro '").append(ex.getName()).append("'.");
+        appendExpectedType(detail, ex.getRequiredType());
+        return buildProblem(HttpStatus.BAD_REQUEST, "Bad Request", detail.toString());
     }
 
     @ExceptionHandler(MissingServletRequestParameterException.class)
@@ -125,13 +146,24 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
     public ProblemDetail handleMethodNotSupported(HttpRequestMethodNotSupportedException ex) {
-        return buildProblem(HttpStatus.METHOD_NOT_ALLOWED, "Method Not Allowed",
-                "Método " + ex.getMethod() + " não é suportado nesse endpoint.");
+        String detail = "Método " + ex.getMethod() + " não é suportado nesse endpoint.";
+        if (ex.getSupportedHttpMethods() != null && !ex.getSupportedHttpMethods().isEmpty()) {
+            detail += " Métodos aceitos: " + ex.getSupportedHttpMethods().stream()
+                    .map(Object::toString).collect(Collectors.joining(", ")) + ".";
+        }
+        return buildProblem(HttpStatus.METHOD_NOT_ALLOWED, "Method Not Allowed", detail);
     }
 
     @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
     public ProblemDetail handleMediaTypeNotSupported(HttpMediaTypeNotSupportedException ex) {
-        return buildProblem(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Unsupported Media Type", "Content-Type não suportado.");
+        String detail = ex.getContentType() == null
+                ? "Content-Type ausente."
+                : "Content-Type '" + ex.getContentType() + "' não suportado.";
+        if (!ex.getSupportedMediaTypes().isEmpty()) {
+            detail += " Tipos aceitos: " + ex.getSupportedMediaTypes().stream()
+                    .map(Object::toString).collect(Collectors.joining(", ")) + ".";
+        }
+        return buildProblem(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Unsupported Media Type", detail);
     }
 
     @ExceptionHandler(NoResourceFoundException.class)
@@ -142,7 +174,15 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ProblemDetail handleDataIntegrityViolation(DataIntegrityViolationException ex) {
         log.warn("Violação de integridade no banco de dados", ex);
-        return buildProblem(HttpStatus.CONFLICT, "Conflict", "A operação viola uma restrição de integridade dos dados.");
+        SQLException sqlException = findSqlException(ex);
+        String sqlState = sqlException == null ? null : sqlException.getSQLState();
+        String detail = switch (sqlState == null ? "" : sqlState) {
+            case "23505" -> "Já existe um registro com os mesmos dados (valor duplicado em campo único).";
+            case "23503" -> "A operação referencia um registro que não existe ou que ainda é usado por outros dados.";
+            case "23502" -> "Um campo obrigatório não foi informado.";
+            default -> "A operação viola uma restrição de integridade dos dados.";
+        };
+        return buildProblem(HttpStatus.CONFLICT, "Conflict", detail);
     }
 
     // RAISE EXCEPTION das procedures/triggers (V002__business_rules.sql) chega com SQLState P0001:
@@ -190,6 +230,66 @@ public class GlobalExceptionHandler {
 
     private ProblemDetail buildProblem(HttpStatus status, String title, String detail) {
         return ProblemDetailFactory.build(status, title, detail);
+    }
+
+    // Usa a causa do Jackson para dizer qual campo/valor quebrou o JSON em vez de uma frase genérica.
+    private static String describeUnreadableBody(HttpMessageNotReadableException ex) {
+        Throwable cause = ex.getCause();
+        if (cause instanceof MismatchedInputException mismatch) {
+            String field = jsonPath(mismatch);
+            if (field.isEmpty()) {
+                return "Corpo da requisição com formato inválido.";
+            }
+            StringBuilder detail = new StringBuilder();
+            if (mismatch instanceof InvalidFormatException invalid) {
+                detail.append("Valor inválido '").append(invalid.getValue()).append("' para o campo '")
+                        .append(field).append("'.");
+            } else {
+                detail.append("Tipo inválido para o campo '").append(field).append("'.");
+            }
+            appendExpectedType(detail, mismatch.getTargetType());
+            return detail.toString();
+        }
+        if (cause instanceof JacksonException) {
+            return "JSON malformado. Verifique vírgulas, aspas e chaves do corpo da requisição.";
+        }
+        return "Corpo da requisição ausente.";
+    }
+
+    private static String jsonPath(JacksonException ex) {
+        StringBuilder path = new StringBuilder();
+        for (JacksonException.Reference reference : ex.getPath()) {
+            if (reference.getPropertyName() != null) {
+                if (!path.isEmpty()) {
+                    path.append('.');
+                }
+                path.append(reference.getPropertyName());
+            } else {
+                path.append('[').append(reference.getIndex()).append(']');
+            }
+        }
+        return path.toString();
+    }
+
+    private static void appendExpectedType(StringBuilder detail, Class<?> type) {
+        if (type == null) {
+            return;
+        }
+        if (type.isEnum()) {
+            detail.append(" Valores aceitos: ")
+                    .append(Arrays.stream(type.getEnumConstants()).map(Object::toString).collect(Collectors.joining(", ")))
+                    .append('.');
+        } else if (Number.class.isAssignableFrom(type) || type.isPrimitive() && type != boolean.class) {
+            detail.append(" Esperado um número.");
+        } else if (type == Boolean.class || type == boolean.class) {
+            detail.append(" Esperado true ou false.");
+        } else if (type == LocalDate.class) {
+            detail.append(" Esperado uma data no formato AAAA-MM-DD.");
+        } else if (type == LocalDateTime.class || type == Instant.class || type == OffsetDateTime.class) {
+            detail.append(" Esperado data e hora no formato ISO-8601 (ex.: 2026-10-10T14:30:00).");
+        } else if (type == UUID.class) {
+            detail.append(" Esperado um UUID.");
+        }
     }
 
     private static SQLException findSqlException(Throwable ex) {

@@ -28,6 +28,7 @@ import org.springframework.security.access.AccessDeniedException;
 
 import com.inventra.api.core.domain.kitchen.Kitchen;
 import com.inventra.api.core.domain.user.User;
+import com.inventra.api.core.service.alert.AlertPublisher;
 import com.inventra.api.core.service.kitchen.KitchenUseCase;
 import com.inventra.api.infrastructure.exception.BusinessRuleException;
 import com.inventra.api.infrastructure.exception.ResourceNotFoundException;
@@ -48,6 +49,7 @@ class KitchenAccessRequestServiceTest {
     @Mock private KitchenRepository kitchenRepository;
     @Mock private UserRepository userRepository;
     @Mock private KitchenAccessGuard accessGuard;
+    @Mock private AlertPublisher alertPublisher;
 
     private KitchenAccessRequestService service;
 
@@ -57,7 +59,8 @@ class KitchenAccessRequestServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new KitchenAccessRequestService(store, kitchenUseCase, kitchenRepository, userRepository, accessGuard, TTL);
+        service = new KitchenAccessRequestService(store, kitchenUseCase, kitchenRepository, userRepository, accessGuard,
+                alertPublisher, TTL);
         kitchen = Kitchen.builder().id(KITCHEN_ID).name("Central").active(true).build();
         supervisor = User.builder().id(UUID.randomUUID()).name("Sup").kitchen(kitchen).active(true).build();
         applicant = User.builder().id(UUID.randomUUID()).name("Ana").email("ana@x.com").active(true).build();
@@ -92,7 +95,7 @@ class KitchenAccessRequestServiceTest {
         when(kitchenUseCase.findByCode("AB12CD34")).thenReturn(kitchen);
         when(store.findLatestByUser(applicant.getId())).thenReturn(Optional.empty());
 
-        KitchenAccessRequest result = service.request("AB12CD34");
+        KitchenAccessRequest result = service.request("AB12CD34", null);
 
         assertTrue(result.isPending());
         assertEquals(applicant.getId(), result.userId());
@@ -104,7 +107,7 @@ class KitchenAccessRequestServiceTest {
     void requestRejectsUserAlreadyLinkedToAKitchen() {
         when(accessGuard.currentUser()).thenReturn(applicant);
 
-        assertThrows(BusinessRuleException.class, () -> service.request("AB12CD34"));
+        assertThrows(BusinessRuleException.class, () -> service.request("AB12CD34", null));
         verify(store, never()).savePending(any(), any());
     }
 
@@ -114,7 +117,7 @@ class KitchenAccessRequestServiceTest {
         when(kitchenUseCase.findByCode("AB12CD34")).thenReturn(kitchen);
         when(store.findLatestByUser(applicant.getId())).thenReturn(Optional.of(pending()));
 
-        assertThrows(BusinessRuleException.class, () -> service.request("AB12CD34"));
+        assertThrows(BusinessRuleException.class, () -> service.request("AB12CD34", null));
         verify(store, never()).savePending(any(), any());
     }
 
@@ -125,7 +128,7 @@ class KitchenAccessRequestServiceTest {
         when(store.findLatestByUser(applicant.getId()))
                 .thenReturn(Optional.of(decided(KitchenAccessRequestStatus.REJECTED)));
 
-        KitchenAccessRequest result = service.request("AB12CD34");
+        KitchenAccessRequest result = service.request("AB12CD34", null);
 
         assertTrue(result.isPending());
     }
@@ -135,7 +138,7 @@ class KitchenAccessRequestServiceTest {
         loggedAsApplicant();
         when(kitchenUseCase.findByCode("XXXX")).thenThrow(new ResourceNotFoundException("Cozinha não encontrada."));
 
-        assertThrows(ResourceNotFoundException.class, () -> service.request("XXXX"));
+        assertThrows(ResourceNotFoundException.class, () -> service.request("XXXX", null));
     }
 
     // ---------- findMine / list ----------

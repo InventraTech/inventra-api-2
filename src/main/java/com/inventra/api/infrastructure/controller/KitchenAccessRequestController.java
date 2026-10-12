@@ -35,10 +35,10 @@ public class KitchenAccessRequestController {
     private final KitchenAccessRequestService service;
 
     // qualquer usuário autenticado sem cozinha
-    @Operation(summary = "Solicita entrada em uma cozinha usando o código dela")
+    @Operation(summary = "Solicita entrada em uma cozinha, pelo id (descoberta) ou pelo código de convite")
     @PostMapping
     public ResponseEntity<KitchenAccessRequestResponse> request(@Valid @RequestBody CreateKitchenAccessRequest body) {
-        KitchenAccessRequestResponse response = toResponse(service.request(body.code()));
+        KitchenAccessRequestResponse response = toResponse(service.request(body.code(), body.kitchenId()));
         return ResponseEntity.created(URI.create("/api/kitchen-access-requests/" + response.id())).body(response);
     }
 

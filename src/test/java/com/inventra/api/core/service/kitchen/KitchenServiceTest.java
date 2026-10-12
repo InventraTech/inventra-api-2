@@ -34,7 +34,10 @@ import com.inventra.api.infrastructure.exception.ResourceNotFoundException;
 import com.inventra.api.infrastructure.repository.KitchenRepository;
 import com.inventra.api.infrastructure.repository.UserRepository;
 import com.inventra.api.infrastructure.security.KitchenAccessGuard;
+import com.inventra.api.core.service.kitchenaccess.KitchenAccessRequestStore;
 import com.inventra.api.infrastructure.security.KitchenCodeLookupLimiter;
+import com.inventra.api.infrastructure.security.KitchenDiscoveryLimiter;
+import org.springframework.context.ApplicationEventPublisher;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -47,6 +50,9 @@ class KitchenServiceTest {
     @Mock private KitchenAccessGuard accessGuard;
     @Mock private KitchenCodeGenerator codeGenerator;
     @Mock private KitchenCodeLookupLimiter lookupLimiter;
+    @Mock private KitchenDiscoveryLimiter discoveryLimiter;
+    @Mock private KitchenAccessRequestStore accessRequestStore;
+    @Mock private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks private KitchenService service;
 
@@ -72,7 +78,7 @@ class KitchenServiceTest {
         when(repository.existsByCodeIgnoreCase("AB12CD34")).thenReturn(false);
         when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
 
-        Kitchen result = service.create(new CreateKitchenRequest("Central", "Rua A"));
+        Kitchen result = service.create(new CreateKitchenRequest("Central", "Rua A", null, null, null, null));
 
         assertEquals("AB12CD34", result.getCode());
         assertTrue(result.getActive());
@@ -88,7 +94,7 @@ class KitchenServiceTest {
         when(repository.existsByCodeIgnoreCase("NOVOCODE")).thenReturn(false);
         when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
 
-        Kitchen result = service.create(new CreateKitchenRequest("Central", null));
+        Kitchen result = service.create(new CreateKitchenRequest("Central", null, null, null, null, null));
 
         assertEquals("NOVOCODE", result.getCode());
         verify(codeGenerator, times(2)).generate();
@@ -100,7 +106,7 @@ class KitchenServiceTest {
         when(codeGenerator.generate()).thenReturn("DUPLICAD");
         when(repository.existsByCodeIgnoreCase("DUPLICAD")).thenReturn(true);
 
-        assertThrows(BusinessRuleException.class, () -> service.create(new CreateKitchenRequest("Central", null)));
+        assertThrows(BusinessRuleException.class, () -> service.create(new CreateKitchenRequest("Central", null, null, null, null, null)));
         verify(repository, never()).save(any());
     }
 
@@ -108,7 +114,7 @@ class KitchenServiceTest {
     void createRejectsUserAlreadyLinkedToAKitchen() {
         when(accessGuard.currentKitchenId()).thenReturn(KITCHEN_ID);
 
-        assertThrows(BusinessRuleException.class, () -> service.create(new CreateKitchenRequest("Outra", null)));
+        assertThrows(BusinessRuleException.class, () -> service.create(new CreateKitchenRequest("Outra", null, null, null, null, null)));
         verify(repository, never()).save(any());
     }
 
@@ -187,7 +193,7 @@ class KitchenServiceTest {
     void updateChangesOnlyProvidedFields() {
         when(repository.findById(KITCHEN_ID)).thenReturn(Optional.of(kitchen()));
 
-        Kitchen result = service.update(KITCHEN_ID, new UpdateKitchenRequest(null, "Rua Nova, 10"));
+        Kitchen result = service.update(KITCHEN_ID, new UpdateKitchenRequest(null, "Rua Nova, 10", null, null, null, null, null));
 
         assertEquals("Central", result.getName());
         assertEquals("Rua Nova, 10", result.getAddress());
@@ -199,7 +205,7 @@ class KitchenServiceTest {
         doThrow(new AccessDeniedException("sem acesso")).when(accessGuard).assertAccess(KITCHEN_ID);
 
         assertThrows(AccessDeniedException.class,
-                () -> service.update(KITCHEN_ID, new UpdateKitchenRequest("X", null)));
+                () -> service.update(KITCHEN_ID, new UpdateKitchenRequest("X", null, null, null, null, null, null)));
         verify(repository, never()).save(any());
     }
 

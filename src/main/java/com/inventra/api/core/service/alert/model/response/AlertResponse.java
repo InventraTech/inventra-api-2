@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 
 import com.inventra.api.core.domain.alert.Alert;
 import com.inventra.api.core.domain.alert.enums.AlertSeverity;
+import com.inventra.api.core.service.alert.AlertView;
 
 public record AlertResponse(
         Integer id,
@@ -13,7 +14,11 @@ public record AlertResponse(
         ProductSummary product,
         KitchenSummary kitchen,
         String message,
+        // lido por quem está chamando
         Boolean read,
+        // o que originou o alerta (id da requisição, id do pedido de entrada ou código de barras): o app usa
+        // para saber aonde levar a pessoa quando ela toca na notificação
+        String refKey,
         LocalDateTime createdAt
 ) {
     public record BatchSummary(Integer id, String batchNumber) {
@@ -25,7 +30,15 @@ public record AlertResponse(
     public record KitchenSummary(Integer id, String name) {
     }
 
+    public static AlertResponse from(AlertView view) {
+        return fromEntity(view.alert(), view.read());
+    }
+
     public static AlertResponse fromEntity(Alert alert) {
+        return fromEntity(alert, Boolean.TRUE.equals(alert.getRead()));
+    }
+
+    private static AlertResponse fromEntity(Alert alert, boolean read) {
         var batch = alert.getBatch() != null
                 ? new BatchSummary(alert.getBatch().getId(), alert.getBatch().getBatchNumber())
                 : null;
@@ -41,7 +54,8 @@ public record AlertResponse(
                 product,
                 new KitchenSummary(alert.getKitchen().getId(), alert.getKitchen().getName()),
                 alert.getMessage(),
-                alert.getRead(),
+                read,
+                alert.getRefKey(),
                 alert.getCreatedAt()
         );
     }

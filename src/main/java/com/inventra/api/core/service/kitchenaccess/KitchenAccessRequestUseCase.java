@@ -4,8 +4,9 @@ import java.util.List;
 
 public interface KitchenAccessRequestUseCase {
 
-    // Usuário sem cozinha pede entrada pelo código; fica pendente até um supervisor decidir.
-    KitchenAccessRequest request(String code);
+    // Usuário sem cozinha pede entrada pelo código de convite ou pelo id da cozinha escolhida na descoberta
+    // (exatamente um dos dois); fica pendente até um supervisor decidir.
+    KitchenAccessRequest request(String code, Integer kitchenId);
 
     // Pedido mais recente do próprio usuário.
     KitchenAccessRequest findMine();

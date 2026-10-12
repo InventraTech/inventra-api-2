@@ -12,11 +12,13 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.inventra.api.core.domain.product.Product;
+import com.inventra.api.core.service.product.BarcodeLookupService;
 import com.inventra.api.core.service.product.ProductUseCase;
 import com.inventra.api.core.service.product.model.request.CreateProductRequest;
 import com.inventra.api.core.service.product.model.request.LinkSupplierRequest;
 import com.inventra.api.core.service.product.model.request.SetKitchenParametersRequest;
 import com.inventra.api.core.service.product.model.request.UpdateProductRequest;
+import com.inventra.api.core.service.product.model.response.BarcodeLookupResponse;
 import com.inventra.api.core.service.product.model.response.ProductKitchenParameterResponse;
 import com.inventra.api.core.service.product.model.response.ProductResponse;
 import com.inventra.api.core.service.product.model.response.ProductSupplierResponse;
@@ -37,6 +39,7 @@ public class ProductController {
 
     private final ProductUseCase useCase;
     private final OpenFoodFactsClient openFoodFactsClient;
+    private final BarcodeLookupService barcodeLookupService;
 
     @Operation(summary = "Cria um produto")
     @PreAuthorize(Roles.SUPERVISOR)
@@ -53,6 +56,15 @@ public class ProductController {
         return openFoodFactsClient.findByBarcode(barcode)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    @Operation(summary = "Consulta um código de barras escaneado: catálogo primeiro, depois OpenFoodFacts",
+            description = "source = CATALOG traz o produto e, com kitchenId, o saldo dele na cozinha. "
+                    + "source = OPEN_FOOD_FACTS traz a sugestão para preencher o cadastro. Código desconhecido: 404.")
+    @GetMapping("/by-barcode/{barcode}")
+    public ResponseEntity<BarcodeLookupResponse> findByBarcode(@PathVariable String barcode,
+                                                                @RequestParam(required = false) Integer kitchenId) {
+        return ResponseEntity.ok(barcodeLookupService.lookup(barcode, kitchenId));
     }
 
     @Operation(summary = "Busca um produto pelo id")
