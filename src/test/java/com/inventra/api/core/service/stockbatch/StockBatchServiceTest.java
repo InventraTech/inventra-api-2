@@ -1,10 +1,14 @@
 package com.inventra.api.core.service.stockbatch;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -22,11 +26,15 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.security.access.AccessDeniedException;
 
+import com.inventra.api.core.domain.category.Category;
 import com.inventra.api.core.domain.kitchen.Kitchen;
 import com.inventra.api.core.domain.product.Product;
+import com.inventra.api.core.domain.product.ProductKitchenParameter;
 import com.inventra.api.core.domain.stock.StockBatch;
 import com.inventra.api.core.domain.stock.enums.StockBatchStatus;
+import com.inventra.api.core.domain.unit.Unit;
 import com.inventra.api.core.service.stockbatch.model.request.RegisterStockEntryRequest;
 import com.inventra.api.infrastructure.exception.BusinessRuleException;
 import com.inventra.api.infrastructure.exception.ResourceNotFoundException;
@@ -281,5 +289,113 @@ class StockBatchServiceTest {
         when(accessGuard.currentKitchenId()).thenReturn(null);
 
         assertEquals(List.of(), service.listByProduct(3));
+    }
+
+    // ---------- listByKitchenAndProduct ----------
+
+    @Test
+    void listByKitchenAndProductFiltersByBothAfterCheckingAccess() {
+        List<StockBatch> batches = List.of(batch("5", StockBatchStatus.ACTIVE, null));
+        when(repository.findByKitchenIdAndProductId(KITCHEN_ID, 3)).thenReturn(batches);
+
+        assertSame(batches, service.listByKitchenAndProduct(KITCHEN_ID, 3));
+        verify(accessGuard).assertAccess(KITCHEN_ID);
+    }
+
+    @Test
+    void listByKitchenAndProductDeniesAnotherKitchen() {
+        doThrow(new AccessDeniedException("sem acesso")).when(accessGuard).assertAccess(99);
+
+        assertThrows(AccessDeniedException.class, () -> service.listByKitchenAndProduct(99, 3));
+        verify(repository, never()).findByKitchenIdAndProductId(any(), any());
+    }
+
+    // ---------- summarizeKitchenStock ----------
+
+    private static Product stockProduct(int id, String name) {
+        return Product.builder().id(id).name(name).brand("Marca").active(true)
+                .category(Category.builder().id(2).name("Laticínios").build())
+                .unit(Unit.builder().id(3).symbol("L").build()).build();
+    }
+
+    private static ProductKitchenParameter parameter(Product product, String minStock) {
+        return ProductKitchenParameter.builder().product(product).minStock(new BigDecimal(minStock)).build();
+    }
+
+    @Test
+    void summarizeKitchenStockCombinesProductsParametersAndUsableBalance() {
+        Product milk = stockProduct(5, "Leite");
+        Product rice = stockProduct(6, "Arroz");
+        Product beans = stockProduct(7, "Feijão");
+        LocalDate expiration = LocalDate.now().plusDays(5);
+        when(productRepository.findKitchenProducts(KITCHEN_ID, "", null)).thenReturn(List.of(
+                new Object[] {rice, null},                      // só tem lote, sem parâmetro
+                new Object[] {milk, parameter(milk, "10")},     // saldo 18 >= mínimo 10
+                new Object[] {beans, parameter(beans, "4")}));  // sem lote utilizável: aparece zerado
+        when(repository.summarizeUsableByProduct(eq(KITCHEN_ID), any(LocalDate.class))).thenReturn(List.of(
+                new Object[] {5, new BigDecimal("18"), 2L, expiration},
+                new Object[] {6, new BigDecimal("3"), 1L, null}));
+
+        var result = service.summarizeKitchenStock(KITCHEN_ID, null, null);
+
+        verify(accessGuard).assertAccess(KITCHEN_ID);
+        assertEquals(3, result.size());
+        var rizItem = result.get(0);
+        assertEquals("Arroz", rizItem.product().name());
+        assertEquals(new BigDecimal("3"), rizItem.totalQuantity());
+        assertEquals(1, rizItem.activeBatches());
+        assertNull(rizItem.nextExpirationDate());
+        assertNull(rizItem.minStock());
+        assertFalse(rizItem.lowStock());
+        var milkItem = result.get(1);
+        assertEquals(new BigDecimal("18"), milkItem.totalQuantity());
+        assertEquals(2, milkItem.activeBatches());
+        assertEquals(expiration, milkItem.nextExpirationDate());
+        assertEquals(new BigDecimal("10"), milkItem.minStock());
+        assertFalse(milkItem.lowStock());
+        assertEquals("Laticínios", milkItem.category().name());
+        assertEquals("L", milkItem.unit().symbol());
+        var beansItem = result.get(2);
+        assertEquals(BigDecimal.ZERO, beansItem.totalQuantity());
+        assertEquals(0, beansItem.activeBatches());
+        assertNull(beansItem.nextExpirationDate());
+        assertTrue(beansItem.lowStock());
+    }
+
+    @Test
+    void summarizeKitchenStockIsNotLowStockWhenBalanceEqualsMinimum() {
+        Product milk = stockProduct(5, "Leite");
+        when(productRepository.findKitchenProducts(KITCHEN_ID, "", null))
+                .thenReturn(List.<Object[]>of(new Object[] {milk, parameter(milk, "10")}));
+        when(repository.summarizeUsableByProduct(eq(KITCHEN_ID), any(LocalDate.class))).thenReturn(List.<Object[]>of(
+                new Object[] {5, new BigDecimal("10"), 1L, null}));
+
+        assertFalse(service.summarizeKitchenStock(KITCHEN_ID, null, null).get(0).lowStock());
+    }
+
+    @Test
+    void summarizeKitchenStockPassesTrimmedNameAndCategoryFilters() {
+        when(productRepository.findKitchenProducts(KITCHEN_ID, "lei", 2)).thenReturn(List.of());
+
+        assertEquals(List.of(), service.summarizeKitchenStock(KITCHEN_ID, 2, "  lei "));
+        verify(productRepository).findKitchenProducts(KITCHEN_ID, "lei", 2);
+    }
+
+    @Test
+    void summarizeKitchenStockHandlesProductWithoutCategory() {
+        Product product = Product.builder().id(8).name("Sal").active(true)
+                .unit(Unit.builder().id(1).symbol("kg").build()).build();
+        when(productRepository.findKitchenProducts(KITCHEN_ID, "", null))
+                .thenReturn(List.<Object[]>of(new Object[] {product, null}));
+
+        assertNull(service.summarizeKitchenStock(KITCHEN_ID, null, null).get(0).category());
+    }
+
+    @Test
+    void summarizeKitchenStockDeniesAnotherKitchen() {
+        doThrow(new AccessDeniedException("sem acesso")).when(accessGuard).assertAccess(99);
+
+        assertThrows(AccessDeniedException.class, () -> service.summarizeKitchenStock(99, null, null));
+        verify(productRepository, never()).findKitchenProducts(any(), any(), any());
     }
 }

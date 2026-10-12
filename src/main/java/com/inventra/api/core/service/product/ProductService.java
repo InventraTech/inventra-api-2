@@ -93,7 +93,8 @@ public class ProductService implements ProductUseCase {
 
     @Override
     public Page<Product> search(String name, Integer categoryId, Boolean active, Pageable pageable) {
-        return repository.search(name, categoryId, active, pageable);
+        // nome vazio = sem filtro (a query não aceita parâmetro nulo, ver ProductRepository.search)
+        return repository.search(name == null ? "" : name, categoryId, active, pageable);
     }
 
     @Override

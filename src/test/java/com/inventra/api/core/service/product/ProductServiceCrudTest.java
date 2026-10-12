@@ -156,6 +156,15 @@ class ProductServiceCrudTest {
         assertSame(page, service.search("arr", 2, true, pageable));
     }
 
+    @Test
+    void searchWithoutNameFiltersWithEmptyTextInsteadOfNull() {
+        Pageable pageable = PageRequest.of(0, 200);
+        Page<Product> page = new PageImpl<>(List.of(product()));
+        when(repository.search("", null, true, pageable)).thenReturn(page);
+
+        assertSame(page, service.search(null, null, true, pageable));
+    }
+
     // ---------- update ----------
 
     @Test

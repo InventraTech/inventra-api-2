@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.util.List;
 
 import com.inventra.api.core.service.stockbatch.model.request.RegisterStockEntryRequest;
+import com.inventra.api.core.service.stockbatch.model.response.KitchenStockItemResponse;
 import com.inventra.api.core.service.stockbatch.model.response.LowStockAlertResponse;
 import com.inventra.api.core.domain.stock.StockBatch;
 
@@ -27,6 +28,11 @@ public interface StockBatchUseCase {
     List<LowStockAlertResponse> findLowStock();
 
     List<StockBatch> listByKitchen(Integer kitchenId);
+
+    List<StockBatch> listByKitchenAndProduct(Integer kitchenId, Integer productId);
+
+    // produtos ativos ligados à cozinha (com lote ou com parâmetro de estoque) e o saldo utilizável de cada um
+    List<KitchenStockItemResponse> summarizeKitchenStock(Integer kitchenId, Integer categoryId, String name);
 
     List<StockBatch> listByProduct(Integer productId);
 }

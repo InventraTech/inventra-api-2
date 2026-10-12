@@ -13,6 +13,8 @@ import com.inventra.api.core.service.kitchen.model.request.CreateKitchenRequest;
 import com.inventra.api.core.service.kitchen.model.request.UpdateKitchenRequest;
 import com.inventra.api.core.service.kitchen.model.response.KitchenLookupResponse;
 import com.inventra.api.core.service.kitchen.model.response.KitchenResponse;
+import com.inventra.api.core.service.stockbatch.StockBatchUseCase;
+import com.inventra.api.core.service.stockbatch.model.response.KitchenStockItemResponse;
 import com.inventra.api.infrastructure.security.Roles;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -27,6 +29,7 @@ import lombok.RequiredArgsConstructor;
 public class KitchenController {
 
     private final KitchenUseCase useCase;
+    private final StockBatchUseCase stockBatchUseCase;
 
     @Operation(summary = "Cria uma cozinha")
     @PreAuthorize(Roles.SUPERVISOR)
@@ -56,6 +59,17 @@ public class KitchenController {
                 .map(KitchenResponse::fromEntity)
                 .toList();
         return ResponseEntity.ok(responses);
+    }
+
+    @Operation(summary = "Resumo do estoque da cozinha",
+            description = "Produtos ativos ligados à cozinha (com lote ou parâmetro de estoque), com o saldo dos "
+                    + "lotes ativos e não vencidos, ordenados por nome. Filtros opcionais: categoryId e name.")
+    @PreAuthorize(Roles.STOCK)
+    @GetMapping("/{kitchenId}/stock")
+    public ResponseEntity<List<KitchenStockItemResponse>> stock(@PathVariable Integer kitchenId,
+                                                                  @RequestParam(required = false) Integer categoryId,
+                                                                  @RequestParam(required = false) String name) {
+        return ResponseEntity.ok(stockBatchUseCase.summarizeKitchenStock(kitchenId, categoryId, name));
     }
 
     @Operation(summary = "Atualiza uma cozinha")
