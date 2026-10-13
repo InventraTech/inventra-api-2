@@ -53,6 +53,16 @@ class GlobalExceptionHandlerTest {
         record Payload(@NotBlank String name, @Size(max = 3) String code) {
         }
 
+        enum Kind { ONE, TWO }
+
+        record EnumPayload(Kind accessType, Integer quantity) {
+        }
+
+        @PostMapping("/enum")
+        String enumBody(@RequestBody EnumPayload payload) {
+            return "ok";
+        }
+
         @PostMapping("/validate")
         String validate(@Valid @RequestBody Payload payload) {
             return "ok";
@@ -101,6 +111,11 @@ class GlobalExceptionHandlerTest {
         @GetMapping("/integrity")
         String integrity() {
             throw new DataIntegrityViolationException("fk violada");
+        }
+
+        @GetMapping("/duplicate")
+        String duplicate() {
+            throw new DataIntegrityViolationException("dup", new SQLException("duplicate key", "23505"));
         }
 
         @GetMapping("/raise-exception")
@@ -176,14 +191,40 @@ class GlobalExceptionHandlerTest {
     void malformedJsonBecomes400() throws Exception {
         mockMvc.perform(post("/validate").contentType(MediaType.APPLICATION_JSON).content("{not json"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.detail").value("Corpo da requisição ausente ou com JSON inválido."));
+                .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.startsWith("JSON malformado")));
+    }
+
+    @Test
+    void missingBodyBecomes400() throws Exception {
+        mockMvc.perform(post("/validate").contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("Corpo da requisição ausente."));
+    }
+
+    @Test
+    void invalidEnumValueNamesTheFieldAndTheAcceptedValues() throws Exception {
+        mockMvc.perform(post("/enum").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"accessType\":\"cachorro\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value(
+                        "Valor inválido 'cachorro' para o campo 'accessType'. Valores aceitos: ONE, TWO."));
+    }
+
+    @Test
+    void wrongTypeInBodyNamesTheFieldAndTheExpectedType() throws Exception {
+        mockMvc.perform(post("/enum").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"quantity\":\"muitos\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value(
+                        "Valor inválido 'muitos' para o campo 'quantity'. Esperado um número."));
     }
 
     @Test
     void wrongParameterTypeBecomes400() throws Exception {
         mockMvc.perform(get("/typed").param("id", "abc"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.status").value(400));
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.detail").value("Valor inválido 'abc' para o parâmetro 'id'. Esperado um número."));
     }
 
     @Test
@@ -243,6 +284,19 @@ class GlobalExceptionHandlerTest {
         mockMvc.perform(get("/integrity"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.detail").value("A operação viola uma restrição de integridade dos dados."));
+    }
+
+    @Test
+    void uniqueViolationBecomes409WithDuplicateMessage() throws Exception {
+        mockMvc.perform(get("/duplicate"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.startsWith("Já existe um registro")));
+    }
+
+    @Test
+    void unsupportedMethodListsTheAcceptedOnes() throws Exception {
+        mockMvc.perform(post("/not-found"))
+                .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.containsString("Métodos aceitos: GET")));
     }
 
     @Test

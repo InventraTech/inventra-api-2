@@ -17,6 +17,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -32,7 +33,16 @@ import com.inventra.api.core.domain.stock.StockBatch;
 import com.inventra.api.core.service.alert.model.request.CreateAlertRequest;
 import com.inventra.api.infrastructure.exception.BusinessRuleException;
 import com.inventra.api.infrastructure.exception.ResourceNotFoundException;
+import com.inventra.api.infrastructure.repository.AlertReadRepository;
 import com.inventra.api.infrastructure.repository.AlertRepository;
+import com.inventra.api.infrastructure.client.openfoodfacts.OpenFoodFactsClient;
+import com.inventra.api.infrastructure.client.openfoodfacts.model.OpenFoodFactsProduct;
+import com.inventra.api.core.domain.alert.AlertRead;
+import com.inventra.api.core.domain.alert.AlertReadId;
+import com.inventra.api.core.domain.alert.AlertType;
+import com.inventra.api.core.domain.profile.Profile;
+import com.inventra.api.core.domain.user.User;
+import java.util.UUID;
 import com.inventra.api.infrastructure.repository.KitchenRepository;
 import com.inventra.api.infrastructure.repository.ProductRepository;
 import com.inventra.api.infrastructure.repository.StockBatchRepository;
@@ -49,11 +59,15 @@ class AlertServiceTest {
     @Mock private ProductRepository productRepository;
     @Mock private StockBatchRepository stockBatchRepository;
     @Mock private KitchenAccessGuard accessGuard;
+    @Mock private AlertReadRepository readRepository;
+    @Mock private AlertPublisher publisher;
+    @Mock private OpenFoodFactsClient openFoodFactsClient;
 
     @InjectMocks private AlertService service;
 
     private Kitchen kitchen;
     private Product product;
+    private User user;
 
     @BeforeEach
     void setUp() {
@@ -61,6 +75,9 @@ class AlertServiceTest {
         product = Product.builder().id(3).name("Arroz").active(true).build();
         when(kitchenRepository.findById(KITCHEN_ID)).thenReturn(Optional.of(kitchen));
         when(repository.save(any(Alert.class))).thenAnswer(inv -> inv.getArgument(0));
+        user = User.builder().id(UUID.randomUUID()).name("Ana")
+                .profile(Profile.builder().id(2).accessType("estoquista").build()).build();
+        when(accessGuard.currentUser()).thenReturn(user);
     }
 
     private CreateAlertRequest request(Integer productId, Integer batchId) {
@@ -153,25 +170,130 @@ class AlertServiceTest {
     }
 
     @Test
-    void listByKitchenAndListUnreadUseTheirOwnQueries() {
-        List<Alert> all = List.of(alert());
-        List<Alert> unread = List.of(alert());
-        when(repository.findByKitchenId(KITCHEN_ID)).thenReturn(all);
-        when(repository.findByKitchenIdAndReadFalse(KITCHEN_ID)).thenReturn(unread);
+    void findByIdHidesAlertAddressedToSomeoneElse() {
+        Alert personal = alert();
+        personal.setRecipient(User.builder().id(UUID.randomUUID()).build());
+        when(repository.findById(5)).thenReturn(Optional.of(personal));
 
-        assertSame(all, service.listByKitchen(KITCHEN_ID));
-        assertSame(unread, service.listUnreadByKitchen(KITCHEN_ID));
+        assertThrows(AccessDeniedException.class, () -> service.findById(5));
+    }
+
+    @Test
+    void listByKitchenMarksAsReadOnlyWhatTheCallerRead() {
+        Alert readByMe = alert();
+        Alert unread = alert();
+        unread.setId(6);
+        Alert resolved = alert();
+        resolved.setId(7);
+        resolved.setRead(true);
+        when(repository.findVisible(KITCHEN_ID, user.getId(), 2, true)).thenReturn(List.of(readByMe, unread, resolved));
+        when(readRepository.findReadAlertIds(user.getId(), List.of(5, 6, 7))).thenReturn(List.of(5));
+
+        List<AlertView> result = service.listByKitchen(KITCHEN_ID);
+
+        assertEquals(List.of(true, false, true), result.stream().map(AlertView::read).toList());
+        verify(accessGuard).assertAccess(KITCHEN_ID);
+    }
+
+    @Test
+    void buyerOnlySeesAlertsAddressedToThem() {
+        user.setProfile(Profile.builder().id(3).accessType("comprador").build());
+        when(repository.findUnreadVisible(KITCHEN_ID, user.getId(), 3, false)).thenReturn(List.of(alert()));
+
+        assertEquals(1, service.listUnreadByKitchen(KITCHEN_ID).size());
+
+        // alerta de estoque, sem destinatário: não é para o comprador
+        when(repository.findById(5)).thenReturn(Optional.of(alert()));
+        assertThrows(AccessDeniedException.class, () -> service.findById(5));
     }
 
     // ---------- markAsRead / delete ----------
 
     @Test
-    void markAsReadSetsTheFlag() {
+    void markAsReadRecordsTheReadingOnlyForTheCaller() {
+        Alert existing = alert();
+        when(repository.findById(5)).thenReturn(Optional.of(existing));
+
+        AlertView result = service.markAsRead(5);
+
+        assertTrue(result.read());
+        // o alerta em si não muda: os outros continuam vendo como não lido
+        assertFalse(existing.getRead());
+        ArgumentCaptor<AlertRead> read = ArgumentCaptor.forClass(AlertRead.class);
+        verify(readRepository).save(read.capture());
+        assertEquals(new AlertReadId(5, user.getId()), read.getValue().getId());
+    }
+
+    @Test
+    void markAsReadTwiceDoesNotDuplicateTheReading() {
         when(repository.findById(5)).thenReturn(Optional.of(alert()));
+        when(readRepository.existsById(new AlertReadId(5, user.getId()))).thenReturn(true);
 
-        Alert result = service.markAsRead(5);
+        service.markAsRead(5);
 
-        assertTrue(result.getRead());
+        verify(readRepository, never()).save(any());
+    }
+
+    @Test
+    void markAllAsReadRecordsEveryUnreadAlertOfTheCaller() {
+        Alert second = alert();
+        second.setId(6);
+        when(repository.findUnreadVisible(KITCHEN_ID, user.getId(), 2, true)).thenReturn(List.of(alert(), second));
+
+        service.markAllAsRead(KITCHEN_ID);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<AlertRead>> reads = ArgumentCaptor.forClass(List.class);
+        verify(readRepository).saveAll(reads.capture());
+        assertEquals(List.of(new AlertReadId(5, user.getId()), new AlertReadId(6, user.getId())),
+                reads.getValue().stream().map(AlertRead::getId).toList());
+    }
+
+    // ---------- produto não cadastrado ----------
+
+    @Test
+    void reportUnregisteredProductNotifiesSupervisorsWithTheProductName() {
+        when(repository.findFirstOpenByOrigin(KITCHEN_ID, AlertType.UNREGISTERED_PRODUCT, "789")).thenReturn(Optional.empty());
+        when(openFoodFactsClient.findByBarcode("789"))
+                .thenReturn(Optional.of(new OpenFoodFactsProduct("Leite Integral 1L", "Italac", null, "1 L")));
+        when(publisher.notifyProfile(any(), any(), any(), any(), any(), any())).thenReturn(alert());
+
+        var report = service.reportUnregisteredProduct(KITCHEN_ID, "789");
+
+        assertTrue(report.created());
+        verify(publisher).notifyProfile(kitchen, "supervisor", AlertType.UNREGISTERED_PRODUCT, AlertSeverity.MEDIUM,
+                "Produto não cadastrado: Leite Integral 1L (789)", "789");
+    }
+
+    @Test
+    void reportUnregisteredProductFallsBackToTheBarcodeWhenTheLookupFails() {
+        when(repository.findFirstOpenByOrigin(KITCHEN_ID, AlertType.UNREGISTERED_PRODUCT, "789")).thenReturn(Optional.empty());
+        when(openFoodFactsClient.findByBarcode("789")).thenThrow(new IllegalStateException("fora do ar"));
+        when(publisher.notifyProfile(any(), any(), any(), any(), any(), any())).thenReturn(alert());
+
+        service.reportUnregisteredProduct(KITCHEN_ID, "789");
+
+        verify(publisher).notifyProfile(kitchen, "supervisor", AlertType.UNREGISTERED_PRODUCT, AlertSeverity.MEDIUM,
+                "Produto não cadastrado: 789", "789");
+    }
+
+    @Test
+    void reportUnregisteredProductReturnsTheOpenAlertInsteadOfDuplicating() {
+        Alert open = alert();
+        when(repository.findFirstOpenByOrigin(KITCHEN_ID, AlertType.UNREGISTERED_PRODUCT, "789")).thenReturn(Optional.of(open));
+
+        var report = service.reportUnregisteredProduct(KITCHEN_ID, "789");
+
+        assertFalse(report.created());
+        assertSame(open, report.alert());
+        verify(publisher, never()).notifyProfile(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void reportUnregisteredProductRejectsBarcodeAlreadyInTheCatalog() {
+        when(productRepository.existsByBarcode("789")).thenReturn(true);
+
+        assertThrows(BusinessRuleException.class, () -> service.reportUnregisteredProduct(KITCHEN_ID, "789"));
     }
 
     @Test

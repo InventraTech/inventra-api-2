@@ -68,7 +68,12 @@ CORS_ALLOWED_ORIGINS=http://localhost:3000
 CLOUDINARY_CLOUD_NAME=
 CLOUDINARY_API_KEY=
 CLOUDINARY_API_SECRET=
+
+# Login com Google (opcional): chave da conta de serviço do Firebase, o JSON puro ou em base64
+FIREBASE_CREDENTIALS_JSON=
 ```
+
+A lista completa, com os valores padrão, está em [`.env.example`](.env.example). A chave do Firebase **nunca** vai para o repositório; sem ela a API sobe normalmente e só `POST /api/auth/google` responde **503**.
 
 Uploads são limitados a **5 MB** por arquivo/request (`spring.servlet.multipart.max-file-size`).
 
@@ -88,7 +93,7 @@ Uploads são limitados a **5 MB** por arquivo/request (`spring.servlet.multipart
 
 A aplicação sobe em `http://localhost:8080`. O Flyway aplica as migrations de `src/main/resources/db/migration/` automaticamente na primeira execução.
 
-> **Migrations não são editadas aqui.** O repositório [inventra-data-modeling-2](https://github.com/InventraTech/inventra-data-modeling-2) é a fonte da verdade do schema: toda mudança nasce lá (`postgre/09_migrations`) e é copiada byte a byte para `db/migration`, mantendo os mesmos nomes (`V001__...`, `V002__...`).
+> **Migrations não são editadas aqui.** O repositório [inventra-data-modeling-2](https://github.com/InventraTech/inventra-data-modeling-2) é a fonte da verdade do schema: toda mudança nasce lá (`postgre/migrations`) e é copiada byte a byte para `db/migration`, mantendo os mesmos nomes (`V001__...`, `V002__...`).
 
 - **Swagger UI:** `http://localhost:8080/swagger-ui.html` — para chamar endpoints protegidos, faça login (ou registre-se), clique em **Authorize** e cole o `token` (sem o prefixo `Bearer`)
 - **OpenAPI JSON:** `http://localhost:8080/v3/api-docs`
@@ -108,18 +113,20 @@ Resumo:
 
 | Recurso            | Base path              | Acesso                                                             |
 |:-------------------|:-----------------------|:-------------------------------------------------------------------|
-| Autenticação       | `/api/auth`            | `POST /login` e `POST /register` públicos                          |
+| Autenticação       | `/api/auth`            | `POST /login`, `/register`, `/google`, `/refresh` e `/logout` públicos |
 | Usuários           | `/api/users`           | Supervisor (criar/listar/ativar/desativar); cada um edita o próprio nome e senha |
 | Perfis             | `/api/profiles`        | Leitura: autenticado — escrita: supervisor                         |
-| Cozinhas           | `/api/kitchens`        | Leitura: autenticado — escrita: supervisor; escopo por cozinha     |
+| Cozinhas           | `/api/kitchens`        | Leitura: autenticado — escrita: supervisor; escopo por cozinha. `GET /discover` lista as cozinhas abertas a pedidos de entrada (qualquer usuário autenticado) |
+| Acesso à cozinha   | `/api/kitchen-access-requests` | Pedir entrada (por `kitchenId` ou `code`): autenticado sem cozinha — decidir: supervisor |
 | Categorias         | `/api/categories`      | Leitura: autenticado — escrita: supervisor                         |
 | Unidades de medida | `/api/units`           | Leitura: autenticado — escrita: supervisor                         |
 | Fornecedores       | `/api/suppliers`       | Leitura: autenticado — escrita: supervisor                         |
-| Produtos           | `/api/products`        | Leitura: autenticado — escrita: supervisor; parâmetros filtrados pela cozinha |
-| Lotes de estoque   | `/api/stock-batches`   | Supervisor e estoquista — escopo por cozinha                       |
+| Produtos           | `/api/products`        | Leitura: autenticado — escrita: supervisor; parâmetros filtrados pela cozinha. `GET /by-barcode/{barcode}` consulta o catálogo e depois o OpenFoodFacts |
+| Lotes de estoque   | `/api/stock-batches`   | Supervisor e estoquista — escopo por cozinha. `POST /consume` dá baixa por produto, nos lotes que vencem primeiro |
+| Movimentações      | `/api/stock-movements` | Supervisor e estoquista — histórico de entradas, baixas e ajustes  |
 | Inventários        | `/api/inventories`     | Supervisor e estoquista — escopo por cozinha                       |
-| Requisições        | `/api/requisitions`    | Supervisor e comprador (aprovar/rejeitar: supervisor) — escopo por cozinha |
-| Alertas            | `/api/alerts`          | Supervisor e estoquista (criar/deletar: supervisor) — escopo por cozinha |
+| Requisições        | `/api/requisitions`    | Supervisor e comprador (aprovar/rejeitar: supervisor) — escopo por cozinha. Nasce `DRAFT`; `PATCH /{id}/submit` envia para análise |
+| Alertas            | `/api/alerts`          | Consultar e marcar como lido: qualquer usuário da cozinha, só os alertas dele — criar/deletar: supervisor — `POST /unregistered-product`: supervisor e estoquista |
 | Swagger / OpenAPI  | `/swagger-ui/**`, `/v3/api-docs/**` | Público                                               |
 | Health             | `/actuator/health`     | Público                                                            |
 
@@ -159,7 +166,7 @@ src/main/java/com/inventra/api/
 
 src/main/resources/
 ├── application.properties
-└── db/migration/       # Flyway (V001..V005): copia exata de inventra-data-modeling-2/postgre/09_migrations
+└── db/migration/       # Flyway (V001..V009): copia exata de inventra-data-modeling-2/postgre/migrations
 ```
 
 ## Coleção Bruno

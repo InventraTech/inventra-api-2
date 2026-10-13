@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.inventra.api.core.service.auth.AuthUseCase;
+import com.inventra.api.core.service.auth.model.request.GoogleLoginRequest;
 import com.inventra.api.core.service.auth.model.request.LoginRequest;
 import com.inventra.api.core.service.auth.model.request.RefreshTokenRequest;
 import com.inventra.api.core.service.auth.model.request.RegisterRequest;
@@ -30,6 +31,14 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
         return ResponseEntity.ok(useCase.login(request));
+    }
+
+    @Operation(summary = "Entra (ou cadastra) com a conta Google, a partir do ID token do Firebase",
+            description = "Usuário novo sem accessType recebe 409 com code REGISTRATION_REQUIRED (e name/email do "
+                    + "token): o app pergunta o cargo e chama de novo com accessType.")
+    @PostMapping("/google")
+    public ResponseEntity<LoginResponse> google(@Valid @RequestBody GoogleLoginRequest request) {
+        return ResponseEntity.ok(useCase.loginWithGoogle(request));
     }
 
     @Operation(summary = "Troca um refresh token válido por um novo par de tokens")

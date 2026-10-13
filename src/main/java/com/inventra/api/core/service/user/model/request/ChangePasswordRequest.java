@@ -5,8 +5,8 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
 public record ChangePasswordRequest(
-        @Schema(description = "Senha atual", example = "Senha@123", requiredMode = Schema.RequiredMode.REQUIRED)
-        @NotBlank
+        @Schema(description = "Senha atual; dispensada só em conta criada pelo Google, que ainda não tem senha",
+                example = "Senha@123")
         String currentPassword,
 
         @Schema(description = "Nova senha (mínimo 8 caracteres)", example = "NovaSenha@456", requiredMode = Schema.RequiredMode.REQUIRED)

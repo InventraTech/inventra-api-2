@@ -18,6 +18,11 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
     boolean existsByEmailIgnoreCase(String email);
 
+    @Query("""
+            SELECT u FROM User u JOIN FETCH u.profile LEFT JOIN FETCH u.kitchen WHERE u.firebaseUid = :firebaseUid
+            """)
+    Optional<User> findByFirebaseUidWithProfile(@Param("firebaseUid") String firebaseUid);
+
     boolean existsByProfileId(Integer profileId);
 
     @EntityGraph(attributePaths = {"kitchen", "profile"})

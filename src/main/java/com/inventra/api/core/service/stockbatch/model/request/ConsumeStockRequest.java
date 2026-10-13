@@ -2,6 +2,8 @@ package com.inventra.api.core.service.stockbatch.model.request;
 
 import java.math.BigDecimal;
 
+import com.inventra.api.core.domain.stock.enums.StockMovementReason;
+
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotNull;
@@ -12,6 +14,9 @@ public record ConsumeStockRequest(
         @NotNull
         @Positive
         @Digits(integer = 9, fraction = 3)
-        BigDecimal quantity
+        BigDecimal quantity,
+
+        @Schema(description = "Motivo da baixa: USAGE (padrão), LOSS ou EXPIRED", example = "USAGE")
+        StockMovementReason reason
 ) {
 }

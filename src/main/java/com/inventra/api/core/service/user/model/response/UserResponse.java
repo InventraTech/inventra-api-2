@@ -13,6 +13,8 @@ public record UserResponse(
         KitchenSummary kitchen,
         ProfileSummary profile,
         Boolean active,
+        // false em conta criada pelo Google que ainda não definiu uma senha
+        boolean hasPassword,
         LocalDateTime lastLogin,
         LocalDateTime createdAt
 ) {
@@ -35,6 +37,7 @@ public record UserResponse(
                 kitchen,
                 profile,
                 user.getActive(),
+                user.getPasswordHash() != null,
                 user.getLastLogin(),
                 user.getCreatedAt()
         );

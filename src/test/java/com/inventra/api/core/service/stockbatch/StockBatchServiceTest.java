@@ -33,6 +33,12 @@ import com.inventra.api.core.domain.kitchen.Kitchen;
 import com.inventra.api.core.domain.product.Product;
 import com.inventra.api.core.domain.product.ProductKitchenParameter;
 import com.inventra.api.core.domain.stock.StockBatch;
+import com.inventra.api.core.domain.stock.StockMovement;
+import com.inventra.api.core.domain.stock.enums.StockMovementReason;
+import com.inventra.api.core.domain.stock.enums.StockMovementType;
+import com.inventra.api.core.service.stockbatch.model.request.ConsumeProductRequest;
+import com.inventra.api.core.service.stockbatch.model.response.BatchConsumptionResponse;
+import org.mockito.ArgumentCaptor;
 import com.inventra.api.core.domain.stock.enums.StockBatchStatus;
 import com.inventra.api.core.domain.unit.Unit;
 import com.inventra.api.core.service.stockbatch.model.request.RegisterStockEntryRequest;
@@ -42,6 +48,9 @@ import com.inventra.api.infrastructure.repository.KitchenRepository;
 import com.inventra.api.infrastructure.repository.ProductKitchenParameterRepository;
 import com.inventra.api.infrastructure.repository.ProductRepository;
 import com.inventra.api.infrastructure.repository.StockBatchRepository;
+import com.inventra.api.infrastructure.repository.StockMovementRepository;
+import com.inventra.api.core.domain.user.User;
+import java.util.UUID;
 import com.inventra.api.infrastructure.repository.SupplierRepository;
 import com.inventra.api.infrastructure.security.KitchenAccessGuard;
 
@@ -51,12 +60,15 @@ class StockBatchServiceTest {
 
     private static final Integer KITCHEN_ID = 1;
     private static final Integer BATCH_ID = 10;
+    private static final Integer REQUISITION_ID = 77;
+    private static final UUID USER_ID = UUID.randomUUID();
 
     @Mock private StockBatchRepository repository;
     @Mock private ProductRepository productRepository;
     @Mock private KitchenRepository kitchenRepository;
     @Mock private SupplierRepository supplierRepository;
     @Mock private ProductKitchenParameterRepository productKitchenParameterRepository;
+    @Mock private StockMovementRepository movementRepository;
     @Mock private KitchenAccessGuard accessGuard;
 
     @InjectMocks private StockBatchService service;
@@ -68,6 +80,7 @@ class StockBatchServiceTest {
     void setUp() {
         kitchen = Kitchen.builder().id(KITCHEN_ID).name("Central").active(true).build();
         product = Product.builder().id(3).name("Arroz").active(true).build();
+        when(accessGuard.currentUser()).thenReturn(User.builder().id(USER_ID).name("Maria").build());
     }
 
     private StockBatch batch(String quantity, StockBatchStatus status, LocalDate expiration) {
@@ -135,17 +148,17 @@ class StockBatchServiceTest {
     void consumeCallsWriteOffProcedure() {
         when(repository.findById(BATCH_ID)).thenReturn(Optional.of(batch("10", StockBatchStatus.ACTIVE, null)));
 
-        service.consume(BATCH_ID, new BigDecimal("4"));
+        service.consume(BATCH_ID, new BigDecimal("4"), null);
 
-        verify(repository).callWriteOffStock(BATCH_ID, new BigDecimal("4"));
+        verify(repository).callWriteOffStock(BATCH_ID, new BigDecimal("4"), USER_ID, "USAGE");
     }
 
     @Test
     void consumeRejectsQuantityAboveBalance() {
         when(repository.findById(BATCH_ID)).thenReturn(Optional.of(batch("3", StockBatchStatus.ACTIVE, null)));
 
-        assertThrows(BusinessRuleException.class, () -> service.consume(BATCH_ID, new BigDecimal("4")));
-        verify(repository, never()).callWriteOffStock(any(), any());
+        assertThrows(BusinessRuleException.class, () -> service.consume(BATCH_ID, new BigDecimal("4"), null));
+        verify(repository, never()).callWriteOffStock(any(), any(), any(), any());
     }
 
     @Test
@@ -153,22 +166,22 @@ class StockBatchServiceTest {
         when(repository.findById(BATCH_ID))
                 .thenReturn(Optional.of(batch("10", StockBatchStatus.ACTIVE, LocalDate.now().minusDays(1))));
 
-        assertThrows(BusinessRuleException.class, () -> service.consume(BATCH_ID, BigDecimal.ONE));
-        verify(repository, never()).callWriteOffStock(any(), any());
+        assertThrows(BusinessRuleException.class, () -> service.consume(BATCH_ID, BigDecimal.ONE, null));
+        verify(repository, never()).callWriteOffStock(any(), any(), any(), any());
     }
 
     @Test
     void consumeRejectsNonActiveBatch() {
         when(repository.findById(BATCH_ID)).thenReturn(Optional.of(batch("10", StockBatchStatus.WRITTEN_OFF, null)));
 
-        assertThrows(BusinessRuleException.class, () -> service.consume(BATCH_ID, BigDecimal.ONE));
+        assertThrows(BusinessRuleException.class, () -> service.consume(BATCH_ID, BigDecimal.ONE, null));
     }
 
     @Test
     void consumeFailsForUnknownBatch() {
         when(repository.findById(BATCH_ID)).thenReturn(Optional.empty());
 
-        assertThrows(ResourceNotFoundException.class, () -> service.consume(BATCH_ID, BigDecimal.ONE));
+        assertThrows(ResourceNotFoundException.class, () -> service.consume(BATCH_ID, BigDecimal.ONE, null));
     }
 
     // ---------- restock ----------
@@ -179,7 +192,7 @@ class StockBatchServiceTest {
 
         service.restock(BATCH_ID, new BigDecimal("5"));
 
-        verify(repository).callRegisterStockEntry(BATCH_ID, new BigDecimal("5"));
+        verify(repository).callRegisterStockEntry(BATCH_ID, new BigDecimal("5"), USER_ID);
     }
 
     @Test
@@ -188,10 +201,114 @@ class StockBatchServiceTest {
         when(repository.findById(BATCH_ID)).thenReturn(Optional.of(batch("1", StockBatchStatus.ACTIVE, null)));
 
         assertThrows(BusinessRuleException.class, () -> service.restock(BATCH_ID, BigDecimal.ONE));
-        verify(repository, never()).callRegisterStockEntry(any(), any());
+        verify(repository, never()).callRegisterStockEntry(any(), any(), any());
     }
 
-    // ---------- consumeForProduct (FIFO) ----------
+    @Test
+    void consumeRecordsTheGivenReasonAndAllowsDiscardingAnExpiredBatch() {
+        when(repository.findById(BATCH_ID))
+                .thenReturn(Optional.of(batch("10", StockBatchStatus.ACTIVE, LocalDate.now().minusDays(1))));
+
+        service.consume(BATCH_ID, new BigDecimal("4"), StockMovementReason.EXPIRED);
+
+        verify(repository).callWriteOffStock(BATCH_ID, new BigDecimal("4"), USER_ID, "EXPIRED");
+    }
+
+    @Test
+    void consumeRejectsTheReasonReservedForRequisitions() {
+        assertThrows(IllegalArgumentException.class,
+                () -> service.consume(BATCH_ID, BigDecimal.ONE, StockMovementReason.REQUISITION));
+        verify(repository, never()).callWriteOffStock(any(), any(), any(), any());
+    }
+
+    // ---------- consumeProduct (scan) ----------
+
+    @Test
+    void consumeProductTakesFromBatchesThatExpireFirstAndReturnsTheAffectedOnes() {
+        StockBatch first = batch("3", StockBatchStatus.ACTIVE, LocalDate.now().plusDays(2));
+        first.setId(11);
+        StockBatch second = batch("10", StockBatchStatus.ACTIVE, LocalDate.now().plusDays(9));
+        second.setId(12);
+        when(kitchenRepository.findById(KITCHEN_ID)).thenReturn(Optional.of(kitchen));
+        when(productRepository.existsById(3)).thenReturn(true);
+        when(repository.findUsableForConsumption(eq(KITCHEN_ID), eq(3), any(LocalDate.class)))
+                .thenReturn(List.of(first, second));
+
+        List<BatchConsumptionResponse> result = service.consumeProduct(
+                new ConsumeProductRequest(KITCHEN_ID, 3, new BigDecimal("5"), StockMovementReason.LOSS));
+
+        verify(repository).callWriteOffStock(11, new BigDecimal("3"), USER_ID, "LOSS");
+        verify(repository).callWriteOffStock(12, new BigDecimal("2"), USER_ID, "LOSS");
+        assertEquals(2, result.size());
+        assertEquals(0, result.get(0).remainingQuantity().signum());
+        assertEquals(StockBatchStatus.WRITTEN_OFF, result.get(0).status());
+        assertEquals(new BigDecimal("8"), result.get(1).remainingQuantity());
+        assertEquals(StockBatchStatus.ACTIVE, result.get(1).status());
+    }
+
+    @Test
+    void consumeProductFailsWhenStockIsInsufficient() {
+        when(kitchenRepository.findById(KITCHEN_ID)).thenReturn(Optional.of(kitchen));
+        when(productRepository.existsById(3)).thenReturn(true);
+        when(repository.findUsableForConsumption(eq(KITCHEN_ID), eq(3), any(LocalDate.class)))
+                .thenReturn(List.of(batch("2", StockBatchStatus.ACTIVE, null)));
+
+        assertThrows(BusinessRuleException.class, () -> service.consumeProduct(
+                new ConsumeProductRequest(KITCHEN_ID, 3, new BigDecimal("5"), null)));
+    }
+
+    @Test
+    void consumeProductFailsForUnknownProduct() {
+        when(kitchenRepository.findById(KITCHEN_ID)).thenReturn(Optional.of(kitchen));
+        when(productRepository.existsById(3)).thenReturn(false);
+
+        assertThrows(ResourceNotFoundException.class, () -> service.consumeProduct(
+                new ConsumeProductRequest(KITCHEN_ID, 3, BigDecimal.ONE, null)));
+    }
+
+    // ---------- movimentações gravadas pela API ----------
+
+    @Test
+    void registerEntryRecordsTheEntryMovement() {
+        when(productRepository.findById(3)).thenReturn(Optional.of(product));
+        when(kitchenRepository.findById(KITCHEN_ID)).thenReturn(Optional.of(kitchen));
+        when(repository.save(any(StockBatch.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.registerEntry(entry(LocalDate.of(2026, 10, 1), null));
+
+        ArgumentCaptor<StockMovement> movement = ArgumentCaptor.forClass(StockMovement.class);
+        verify(movementRepository).save(movement.capture());
+        assertEquals(StockMovementType.ENTRY, movement.getValue().getType());
+        assertEquals(new BigDecimal("20"), movement.getValue().getQuantity());
+        assertEquals(new BigDecimal("20"), movement.getValue().getBalanceAfter());
+        assertEquals(USER_ID, movement.getValue().getUser().getId());
+    }
+
+    @Test
+    void adjustRecordsTheSignedDifference() {
+        when(repository.findByIdForUpdate(BATCH_ID)).thenReturn(Optional.of(batch("5", StockBatchStatus.ACTIVE, null)));
+        when(repository.save(any(StockBatch.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.adjust(BATCH_ID, new BigDecimal("3"));
+
+        ArgumentCaptor<StockMovement> movement = ArgumentCaptor.forClass(StockMovement.class);
+        verify(movementRepository).save(movement.capture());
+        assertEquals(StockMovementType.ADJUSTMENT, movement.getValue().getType());
+        assertEquals(new BigDecimal("-2"), movement.getValue().getQuantity());
+        assertEquals(new BigDecimal("3"), movement.getValue().getBalanceAfter());
+    }
+
+    @Test
+    void adjustToTheSameBalanceRecordsNoMovement() {
+        when(repository.findByIdForUpdate(BATCH_ID)).thenReturn(Optional.of(batch("5", StockBatchStatus.ACTIVE, null)));
+        when(repository.save(any(StockBatch.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.adjust(BATCH_ID, new BigDecimal("5"));
+
+        verify(movementRepository, never()).save(any());
+    }
+
+    // ---------- consumeForRequisition (FIFO) ----------
 
     @Test
     void consumeForProductTakesFromBatchesInOrderUntilSatisfied() {
@@ -202,10 +319,10 @@ class StockBatchServiceTest {
         when(repository.findUsableForConsumption(eq(KITCHEN_ID), eq(3), any(LocalDate.class)))
                 .thenReturn(List.of(first, second));
 
-        service.consumeForProduct(KITCHEN_ID, 3, new BigDecimal("5"));
+        service.consumeForRequisition(KITCHEN_ID, 3, new BigDecimal("5"), REQUISITION_ID);
 
-        verify(repository).callWriteOffStock(11, new BigDecimal("3"));
-        verify(repository).callWriteOffStock(12, new BigDecimal("2"));
+        verify(repository).callWriteOffStockForRequisition(11, new BigDecimal("3"), USER_ID, "REQUISITION", REQUISITION_ID);
+        verify(repository).callWriteOffStockForRequisition(12, new BigDecimal("2"), USER_ID, "REQUISITION", REQUISITION_ID);
     }
 
     @Test
@@ -215,7 +332,7 @@ class StockBatchServiceTest {
                 .thenReturn(List.of(only));
 
         assertThrows(BusinessRuleException.class,
-                () -> service.consumeForProduct(KITCHEN_ID, 3, new BigDecimal("5")));
+                () -> service.consumeForRequisition(KITCHEN_ID, 3, new BigDecimal("5"), REQUISITION_ID));
     }
 
     // ---------- adjust ----------

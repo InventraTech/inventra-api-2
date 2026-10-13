@@ -3,6 +3,7 @@ package com.inventra.api.core.service.user;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.security.access.AccessDeniedException;
@@ -44,12 +45,38 @@ public class UserService implements UserUseCase {
             throw new AccessDeniedException("Somente supervisor pode criar usuários.");
         }
         Kitchen kitchen = request.kitchenId() != null ? resolveAssignableKitchen(request.kitchenId()) : null;
-        return save(request.name(), request.email(), request.password(), kitchen, request.profileId());
+        return save(request.name(), request.email(), request.password(), null, kitchen, request.profileId());
     }
 
     @Override
     public User registerSelf(String name, String email, String password, Integer profileId) {
-        return save(name, email, password, null, profileId);
+        return save(name, email, password, null, null, profileId);
+    }
+
+    @Override
+    public Optional<User> findGoogleAccount(String firebaseUid, String email) {
+        Optional<User> linked = repository.findByFirebaseUidWithProfile(firebaseUid);
+        if (linked.isPresent()) {
+            return linked;
+        }
+        // mesma regra do login por senha para e-mails duplicados só na caixa: vale a correspondência exata
+        List<User> candidates = repository.findAllByEmailWithProfile(email);
+        Optional<User> byEmail = candidates.size() == 1
+            ? Optional.of(candidates.get(0))
+            : candidates.stream().filter(user -> user.getEmail().equals(email)).findFirst();
+        byEmail.ifPresent(user -> {
+            if (user.getFirebaseUid() != null) {
+                throw new BusinessRuleException("Este e-mail já está vinculado a outra conta Google.");
+            }
+            user.setFirebaseUid(firebaseUid);
+            repository.save(user);
+        });
+        return byEmail;
+    }
+
+    @Override
+    public User registerWithGoogle(String name, String email, String firebaseUid, Integer profileId) {
+        return save(name, email, null, firebaseUid, null, profileId);
     }
 
     @Override
@@ -112,7 +139,10 @@ public class UserService implements UserUseCase {
         if (!isCurrentUser(user)) {
             throw new AccessDeniedException("Só é possível alterar a própria senha.");
         }
-        if (!passwordEncoder.matches(request.currentPassword(), user.getPasswordHash())) {
+        // conta criada pelo Google não tem senha: a primeira troca cria uma, sem conferir a atual
+        if (user.getPasswordHash() != null
+                && (request.currentPassword() == null
+                    || !passwordEncoder.matches(request.currentPassword(), user.getPasswordHash()))) {
             throw new BusinessRuleException("Senha atual incorreta.");
         }
         user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
@@ -145,7 +175,8 @@ public class UserService implements UserUseCase {
         repository.save(user);
     }
 
-    private User save(String name, String email, String password, Kitchen kitchen, Integer profileId) {
+    private User save(String name, String email, String password, String firebaseUid, Kitchen kitchen,
+                      Integer profileId) {
         String normalizedEmail = email.trim().toLowerCase(Locale.ROOT);
         if (repository.existsByEmailIgnoreCase(normalizedEmail)) {
             throw new BusinessRuleException("Já existe um usuário com esse e-mail.");
@@ -157,7 +188,8 @@ public class UserService implements UserUseCase {
             .id(UUID.randomUUID())
             .name(name)
             .email(normalizedEmail)
-            .passwordHash(passwordEncoder.encode(password))
+            .passwordHash(password == null ? null : passwordEncoder.encode(password))
+            .firebaseUid(firebaseUid)
             .kitchen(kitchen)
             .profile(profile)
             .active(true)

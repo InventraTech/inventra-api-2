@@ -5,6 +5,7 @@ package com.inventra.api.infrastructure.security;
 public final class Roles {
 
     public static final String SUPERVISOR_PROFILE = "supervisor";
+    public static final String COMPRADOR_PROFILE = "comprador";
 
     public static final String SUPERVISOR = "hasRole('SUPERVISOR')";
     public static final String STOCK = "hasAnyRole('SUPERVISOR', 'ESTOQUISTA')";

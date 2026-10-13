@@ -22,6 +22,7 @@ import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import com.inventra.api.core.domain.product.Product;
 import com.inventra.api.core.domain.unit.Unit;
+import com.inventra.api.core.service.product.BarcodeLookupService;
 import com.inventra.api.core.service.product.ProductUseCase;
 import com.inventra.api.infrastructure.client.openfoodfacts.OpenFoodFactsClient;
 import com.inventra.api.infrastructure.exception.ImageStorageException;
@@ -38,6 +39,7 @@ class ProductControllerPhotoTest {
 
     @MockitoBean private ProductUseCase useCase;
     @MockitoBean private OpenFoodFactsClient openFoodFactsClient;
+    @MockitoBean private BarcodeLookupService barcodeLookupService;
 
     private static MockMultipartFile jpegPart() {
         return new MockMultipartFile("file", "foto.jpg", "image/jpeg",

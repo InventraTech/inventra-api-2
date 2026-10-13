@@ -72,9 +72,11 @@ public class JwtService {
 
     // Impressão digital curta do hash da senha: muda quando a senha muda, e com isso todos os tokens
     // emitidos antes da troca deixam de valer. Não expõe o hash (é um SHA-256 dele, truncado).
+    // Conta sem senha (login com Google) usa um valor fixo; se ela criar uma senha, os tokens antigos caem.
     public static String passwordFingerprint(String passwordHash) {
         try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(passwordHash.getBytes(StandardCharsets.UTF_8));
+            String source = passwordHash == null ? "" : passwordHash;
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(source.getBytes(StandardCharsets.UTF_8));
             return Base64.getUrlEncoder().withoutPadding().encodeToString(digest).substring(0, 16);
         } catch (NoSuchAlgorithmException ex) {
             throw new IllegalStateException("SHA-256 indisponível", ex);

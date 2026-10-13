@@ -11,6 +11,7 @@ import com.inventra.api.core.domain.kitchen.Kitchen;
 import com.inventra.api.core.service.kitchen.KitchenUseCase;
 import com.inventra.api.core.service.kitchen.model.request.CreateKitchenRequest;
 import com.inventra.api.core.service.kitchen.model.request.UpdateKitchenRequest;
+import com.inventra.api.core.service.kitchen.model.response.KitchenDiscoveryPage;
 import com.inventra.api.core.service.kitchen.model.response.KitchenLookupResponse;
 import com.inventra.api.core.service.kitchen.model.response.KitchenResponse;
 import com.inventra.api.core.service.stockbatch.StockBatchUseCase;
@@ -50,6 +51,21 @@ public class KitchenController {
     @GetMapping("/by-code/{code}")
     public ResponseEntity<KitchenLookupResponse> findByCode(@PathVariable String code) {
         return ResponseEntity.ok(KitchenLookupResponse.fromEntity(useCase.findByCode(code)));
+    }
+
+    // qualquer usuário autenticado, inclusive quem ainda não tem cozinha
+    @Operation(summary = "Descobre cozinhas para pedir entrada (lista e mapa)",
+            description = "Cozinhas ativas que aceitam pedidos, em resposta resumida (sem código nem endereço). "
+                    + "q filtra por nome; lat e lng ordenam por distância e preenchem distanceKm, dentro de "
+                    + "radiusKm (padrão 50). Paginado: size padrão 20, máximo 50.")
+    @GetMapping("/discover")
+    public ResponseEntity<KitchenDiscoveryPage> discover(@RequestParam(required = false) String q,
+                                                          @RequestParam(required = false) Double lat,
+                                                          @RequestParam(required = false) Double lng,
+                                                          @RequestParam(required = false) Double radiusKm,
+                                                          @RequestParam(defaultValue = "0") int page,
+                                                          @RequestParam(defaultValue = "20") int size) {
+        return ResponseEntity.ok(useCase.discover(q, lat, lng, radiusKm, page, size));
     }
 
     @Operation(summary = "Lista as cozinhas ativas")

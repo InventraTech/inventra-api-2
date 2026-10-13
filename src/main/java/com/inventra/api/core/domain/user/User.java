@@ -34,9 +34,14 @@ public class User {
     @EqualsAndHashCode.Include
     private String email;
 
-    @Column(name = "password_hash", nullable = false, length = 255)
+    // nulo em conta criada pelo login com Google, que não tem senha
+    @Column(name = "password_hash", length = 255)
     @ToString.Exclude
     private String passwordHash;
+
+    // uid do Firebase: vincula a conta Google mesmo se o e-mail mudar
+    @Column(name = "firebase_uid", unique = true, length = 128)
+    private String firebaseUid;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "id_kitchen")

@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -38,7 +39,9 @@ public interface StockBatchRepository extends JpaRepository<StockBatch, Integer>
     Optional<StockBatch> findByIdForUpdate(@Param("id") Integer id);
 
     // Lotes utilizáveis em FIFO por validade: ACTIVE e ainda dentro da validade (lote vencido nunca é
-    // consumido, mesmo antes do job diário marcá-lo como EXPIRED).
+    // consumido, mesmo antes do job diário marcá-lo como EXPIRED). Trava as linhas até o fim da transação:
+    // duas baixas simultâneas do mesmo produto esperam uma à outra em vez de calcularem sobre o mesmo saldo.
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             SELECT sb FROM StockBatch sb
             WHERE sb.kitchen.id = :kitchenId AND sb.product.id = :productId AND sb.status = 'ACTIVE'
@@ -79,6 +82,17 @@ public interface StockBatchRepository extends JpaRepository<StockBatch, Integer>
             """)
     List<Object[]> summarizeUsableByProduct(@Param("kitchenId") Integer kitchenId, @Param("today") LocalDate today);
 
+    // Resumo dos lotes utilizáveis de um produto na cozinha: uma linha [saldo (ou null), quantidade de lotes,
+    // menor validade (ou null)].
+    @Query("""
+            SELECT SUM(sb.currentQuantity), COUNT(sb), MIN(sb.expirationDate) FROM StockBatch sb
+            WHERE sb.kitchen.id = :kitchenId AND sb.product.id = :productId AND sb.status = 'ACTIVE'
+              AND (sb.expirationDate IS NULL OR sb.expirationDate >= :today)
+            """)
+    List<Object[]> summarizeUsableForProduct(@Param("kitchenId") Integer kitchenId,
+                                             @Param("productId") Integer productId,
+                                             @Param("today") LocalDate today);
+
     // Fornecedores ativos que já entregaram algum lote na cozinha.
     @Query("""
             SELECT DISTINCT s FROM StockBatch sb
@@ -93,15 +107,27 @@ public interface StockBatchRepository extends JpaRepository<StockBatch, Integer>
         return sumUsableQuantity(productId, kitchenId, LocalDate.now());
     }
 
-    // Procedures criadas em V002__business_rules.sql. O trigger trg_update_batch_status
-    // marca o lote como WRITTEN_OFF quando o saldo zera.
+    // Procedures criadas em V002__business_rules.sql e recriadas em V007__stock_movements.sql, quando
+    // passaram a gravar a movimentação (tb_stock_movement) com o usuário e o motivo. O trigger
+    // trg_update_batch_status marca o lote como WRITTEN_OFF quando o saldo zera. Os parâmetros nunca são
+    // nulos: o Postgres não resolve a procedure quando o driver manda um nulo sem tipo.
     @Modifying(flushAutomatically = true, clearAutomatically = true)
-    @Query(value = "CALL sp_register_stock_entry(:batchId, :quantity)", nativeQuery = true)
-    void callRegisterStockEntry(@Param("batchId") Integer batchId, @Param("quantity") BigDecimal quantity);
+    @Query(value = "CALL sp_register_stock_entry(:batchId, :quantity, :userId)", nativeQuery = true)
+    void callRegisterStockEntry(@Param("batchId") Integer batchId, @Param("quantity") BigDecimal quantity,
+                                @Param("userId") UUID userId);
 
     @Modifying(flushAutomatically = true, clearAutomatically = true)
-    @Query(value = "CALL sp_write_off_stock(:batchId, :quantity)", nativeQuery = true)
-    void callWriteOffStock(@Param("batchId") Integer batchId, @Param("quantity") BigDecimal quantity);
+    @Query(value = "CALL sp_write_off_stock(:batchId, :quantity, :userId, :reason)", nativeQuery = true)
+    void callWriteOffStock(@Param("batchId") Integer batchId, @Param("quantity") BigDecimal quantity,
+                           @Param("userId") UUID userId, @Param("reason") String reason);
+
+    // Baixa de uma requisição aprovada: a movimentação guarda a requisição, e é por ela que
+    // sp_cancel_requisition sabe o que devolver aos lotes num cancelamento.
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(value = "CALL sp_write_off_stock(:batchId, :quantity, :userId, :reason, :requisitionId)", nativeQuery = true)
+    void callWriteOffStockForRequisition(@Param("batchId") Integer batchId, @Param("quantity") BigDecimal quantity,
+                                         @Param("userId") UUID userId, @Param("reason") String reason,
+                                         @Param("requisitionId") Integer requisitionId);
 
     // Procedure criada em V002__business_rules.sql: marca como EXPIRED os lotes vencidos e gera os alertas.
     // Transacional aqui (e não só no job) para funcionar também quando chamado de dentro do próprio job.
@@ -109,4 +135,11 @@ public interface StockBatchRepository extends JpaRepository<StockBatch, Integer>
     @Modifying
     @Query(value = "CALL sp_expire_batches()", nativeQuery = true)
     void callExpireBatches();
+
+    // Procedure criada em V008__alert_recipients_and_reads.sql: gera o alerta EXPIRING para os lotes ativos
+    // que vencem em até "days" dias, sem duplicar enquanto o alerta do lote estiver aberto.
+    @Transactional
+    @Modifying
+    @Query(value = "CALL sp_alert_expiring_batches(:days)", nativeQuery = true)
+    void callAlertExpiringBatches(@Param("days") int days);
 }
