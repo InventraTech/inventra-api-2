@@ -20,8 +20,15 @@ public class ProductRegistrationProcessor {
     @Transactional
     public Integer process(ProductRegistrationJob job) {
         var request = job.request();
-        return repository.findByBarcode(request.barcode()).map(product -> product.getId())
-                .orElseGet(() -> productUseCase.create(new CreateProductRequest(request.name(), request.brand(),
-                        request.categoryId(), request.unitId(), request.barcode(), request.photoUrl())).getId());
+        var existing = repository.findByBarcode(request.barcode());
+        if (existing.isPresent()) {
+            var product = existing.get();
+            if (job.eventId().equals(product.getRegistrationEventId())) return product.getId();
+            throw new com.inventra.api.infrastructure.exception.BusinessRuleException("Código de barras já cadastrado.");
+        }
+        var product = productUseCase.create(new CreateProductRequest(request.name(), request.brand(),
+                request.categoryId(), request.unitId(), request.barcode(), request.photoUrl()));
+        product.setRegistrationEventId(job.eventId());
+        return repository.save(product).getId();
     }
 }

@@ -27,6 +27,9 @@ import com.inventra.api.core.service.productqueue.ProductRegistrationProcessor;
 import com.inventra.api.core.service.productqueue.model.BarcodeRegistrationRequest;
 import com.inventra.api.core.service.productqueue.model.ProductRegistrationJob;
 import com.inventra.api.infrastructure.exception.ResourceNotFoundException;
+import com.inventra.api.infrastructure.exception.QueueServiceException;
+
+import tools.jackson.databind.json.JsonMapper;
 
 @ExtendWith(OutputCaptureExtension.class)
 class RedisProductRegistrationQueueTest {
@@ -38,6 +41,10 @@ class RedisProductRegistrationQueueTest {
 
     @BeforeAll
     static void connect() {
+        org.junit.jupiter.api.Assumptions.assumeTrue("true".equalsIgnoreCase(System.getenv("REDIS_INTEGRATION_TESTS")),
+                "Redis real exige REDIS_INTEGRATION_TESTS=true e ambiente dedicado de testes.");
+        org.junit.jupiter.api.Assumptions.assumeTrue(System.getenv("REDIS_HOST") != null && System.getenv("REDIS_PORT") != null,
+                "Configure REDIS_HOST e REDIS_PORT para testes de integração.");
         var server = new RedisStandaloneConfiguration(System.getenv("REDIS_HOST"),
                 Integer.parseInt(System.getenv("REDIS_PORT")));
         server.setUsername(System.getenv("REDIS_USERNAME"));
@@ -54,7 +61,7 @@ class RedisProductRegistrationQueueTest {
     @BeforeEach
     void namespace() {
         prefix = "inventra:test:product-queue:" + UUID.randomUUID();
-        queue = new RedisProductRegistrationQueue(redis, prefix);
+        queue = new RedisProductRegistrationQueue(redis, JsonMapper.builder().build(), prefix);
     }
 
     @AfterEach
@@ -136,7 +143,7 @@ class RedisProductRegistrationQueueTest {
         assertThat(queue.update(first.processing(), token)).isTrue();
         queue.release(token);
         // Nova instância da aplicação utiliza os mesmos dados persistidos no Redis.
-        var restarted = new RedisProductRegistrationQueue(redis, prefix);
+        var restarted = new RedisProductRegistrationQueue(redis, JsonMapper.builder().build(), prefix);
         String newToken = UUID.randomUUID().toString();
         assertThat(restarted.acquire(newToken)).isTrue();
         restarted.recover(newToken);
@@ -167,7 +174,7 @@ class RedisProductRegistrationQueueTest {
         var processor = mock(ProductRegistrationProcessor.class);
         when(processor.process(any())).thenAnswer(invocation -> { queue.release(token); return 77; });
         var consumer = new ProductRegistrationConsumer(queue, processor, false);
-        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,
+        org.junit.jupiter.api.Assertions.assertThrows(QueueServiceException.class,
                 () -> consumer.process(queue.take(token), token));
         assertThat(redis.opsForZSet().size(prefix + ":pending")).isEqualTo(1);
         assertThat(redis.opsForList().size(prefix + ":errors")).isZero();
@@ -194,8 +201,50 @@ class RedisProductRegistrationQueueTest {
         assertThat(queue.update(job.completed(1), token)).isFalse();
     }
 
+    @Test
+    void restartRecoversItemPoppedBeforeProcessingStatusWasStored() {
+        var first = job("7891234567890");
+        var second = job("7891234567891");
+        queue.enqueue(first);
+        queue.enqueue(second);
+        assertThat(queue.acquire(token)).isTrue();
+        queue.recover(token);
+        assertThat(queue.take(token)).isEqualTo(first.eventId());
+
+        // Simula queda exatamente entre BRPOP e a atualização para PROCESSING.
+        queue.release(token);
+        String successor = "successor-after-pop";
+        assertThat(queue.acquire(successor)).isTrue();
+        queue.recover(successor);
+
+        assertThat(queue.take(successor)).isEqualTo(first.eventId());
+        assertThat(queue.take(successor)).isEqualTo(second.eventId());
+    }
+
+    @Test
+    void onlyLeaseOwnerCanRecoverTheQueue() {
+        var job = job("7891234567890");
+        queue.enqueue(job);
+        assertThat(queue.acquire(token)).isTrue();
+        queue.recover(token);
+
+        org.junit.jupiter.api.Assertions.assertThrows(QueueServiceException.class,
+                () -> queue.recover("consumer-without-lease"));
+        assertThat(queue.take(token)).isEqualTo(job.eventId());
+    }
+
     private static ProductRegistrationJob job(String barcode) {
         return ProductRegistrationJob.queued(UUID.randomUUID(),
                 new BarcodeRegistrationRequest("Arroz", "Inventra", null, 1, barcode, null));
+    }
+
+    @Test void deadLetterHasBoundedSizeAndInactivityExpiry() {
+        redis.opsForList().leftPushAll(prefix + ":errors", java.util.Collections.nCopies(1000, "old"));
+        var job = job("7891234567890");
+        queue.enqueue(job);
+        assertThat(queue.acquire(token)).isTrue();
+        assertThat(queue.update(job.failed("PROCESSING_ERROR"), token)).isTrue();
+        assertThat(redis.opsForList().size(prefix + ":errors")).isEqualTo(1000);
+        assertThat(redis.getExpire(prefix + ":errors")).isBetween(1L, 604800L);
     }
 }

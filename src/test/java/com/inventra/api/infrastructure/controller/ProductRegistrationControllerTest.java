@@ -25,6 +25,7 @@ import com.inventra.api.core.service.productqueue.ProductRegistrationService;
 import com.inventra.api.core.service.productqueue.model.BarcodeRegistrationRequest;
 import com.inventra.api.core.service.productqueue.model.ProductRegistrationJob;
 import com.inventra.api.core.service.productqueue.model.ProductRegistrationResponse;
+import com.inventra.api.infrastructure.exception.QueueServiceException;
 
 @WebMvcTest(ProductRegistrationController.class)
 @AutoConfigureMockMvc(addFilters = false)
@@ -79,6 +80,13 @@ class ProductRegistrationControllerTest {
 
     @Test void redisFailureReturns503WithoutClaimingAcceptance() throws Exception {
         when(service.enqueue(any())).thenThrow(new RedisConnectionFailureException("Detalhe privado"));
+        mvc.perform(post(URL).contentType(MediaType.APPLICATION_JSON).content(REQUEST))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.detail").value("Serviço de processamento indisponível. Tente novamente em instantes."));
+    }
+
+    @Test void queueInvariantFailureReturns503WithoutInternalDetails() throws Exception {
+        when(service.enqueue(any())).thenThrow(new QueueServiceException("Confirmação privada"));
         mvc.perform(post(URL).contentType(MediaType.APPLICATION_JSON).content(REQUEST))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.detail").value("Serviço de processamento indisponível. Tente novamente em instantes."));

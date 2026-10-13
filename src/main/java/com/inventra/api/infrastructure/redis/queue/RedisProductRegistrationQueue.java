@@ -12,6 +12,7 @@ import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Component;
 
 import com.inventra.api.core.service.productqueue.model.ProductRegistrationJob;
+import com.inventra.api.infrastructure.exception.QueueServiceException;
 
 import tools.jackson.databind.json.JsonMapper;
 
@@ -24,12 +25,13 @@ public class RedisProductRegistrationQueue {
     private static final DefaultRedisScript<Long> LEASE_SCRIPT = script("lease");
 
     private final StringRedisTemplate redis;
-    private final JsonMapper mapper = JsonMapper.builder().build();
+    private final JsonMapper mapper;
     private final String prefix;
 
-    public RedisProductRegistrationQueue(StringRedisTemplate redis,
+    public RedisProductRegistrationQueue(StringRedisTemplate redis, JsonMapper mapper,
             @Value("${app.redis.product-queue.key-prefix:inventra:product-registration}") String prefix) {
         this.redis = redis;
+        this.mapper = mapper;
         this.prefix = prefix;
     }
 
@@ -37,7 +39,7 @@ public class RedisProductRegistrationQueue {
         Long result = redis.execute(ENQUEUE, List.of(key("ready"), key("pending"), key("sequence"), jobKey(job.eventId()), key("consumer-lock")),
                 job.eventId().toString(), mapper.writeValueAsString(job));
         if (!Long.valueOf(1).equals(result)) {
-            throw new IllegalStateException("Não foi possível enfileirar o cadastro.");
+            throw new QueueServiceException("Não foi possível enfileirar o cadastro.");
         }
     }
 
@@ -64,7 +66,7 @@ public class RedisProductRegistrationQueue {
     public void recover(String token) {
         Long result = redis.execute(RECOVER, List.of(key("consumer-lock"), readyKey(token), key("pending"), key("ready")), token);
         if (result == null || result < 0) {
-            throw new IllegalStateException("Consumer perdeu a concessão de processamento.");
+            throw new QueueServiceException("Consumer perdeu a concessão de processamento.");
         }
     }
 

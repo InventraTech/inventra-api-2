@@ -16,6 +16,7 @@ import org.springframework.stereotype.Component;
 import com.inventra.api.core.service.productqueue.ProductRegistrationProcessor;
 import com.inventra.api.core.service.productqueue.model.ProductRegistrationJob;
 import com.inventra.api.infrastructure.exception.BusinessRuleException;
+import com.inventra.api.infrastructure.exception.QueueServiceException;
 import com.inventra.api.infrastructure.exception.ResourceNotFoundException;
 
 @Component
@@ -62,19 +63,19 @@ public class ProductRegistrationConsumer implements SmartLifecycle {
             } catch (RuntimeException ex) {
                 // Pendências continuam no Redis; o próximo ciclo reconstrói a lista.
                 log.warn("Fila de cadastro temporariamente indisponível timestamp={} errorType={}",
-                        Instant.now(), ex.getClass().getSimpleName());
+                        Instant.now(), ex.getClass().getSimpleName(), ex);
                 pause();
             } finally {
                 leaseToken = null;
                 try { queue.release(token); }
-                catch (RuntimeException ex) { log.warn("Concessão da fila aguardará expiração."); }
+                catch (RuntimeException ex) { log.warn("Concessão da fila aguardará expiração.", ex); }
             }
         }
     }
 
     void process(UUID eventId, String token) {
         ProductRegistrationJob job = queue.find(eventId).orElseThrow(
-                () -> new IllegalStateException("Payload de cadastro não encontrado."));
+                () -> new QueueServiceException("Payload de cadastro não encontrado."));
         ProductRegistrationJob processing = job.processing();
         if (!queue.update(processing, token)) return;
         log.info("Cadastro iniciado eventId={} timestamp={}", eventId, processing.startedAt());
@@ -82,13 +83,22 @@ public class ProductRegistrationConsumer implements SmartLifecycle {
         try {
             result = processing.completed(processor.process(processing));
         } catch (RuntimeException ex) {
+            if (ex instanceof org.springframework.dao.TransientDataAccessException
+                    || ex instanceof org.springframework.dao.DataAccessResourceFailureException
+                    || ex instanceof org.springframework.transaction.CannotCreateTransactionException) {
+                // Sem confirmação terminal: pending preserva a posição FIFO para a próxima tentativa.
+                throw new QueueServiceException("Banco temporariamente indisponível; cadastro permanece pendente.", ex);
+            }
+            if (!(ex instanceof ResourceNotFoundException) && !(ex instanceof BusinessRuleException)) {
+                log.error("Falha no cadastro eventId={}", eventId, ex);
+            }
             String code = ex instanceof ResourceNotFoundException ? "REFERENCE_NOT_FOUND"
                     : ex instanceof BusinessRuleException ? "BUSINESS_RULE"
                     : ex instanceof DataAccessException ? "DATABASE_ERROR" : "PROCESSING_ERROR";
             result = processing.failed(code);
         }
         // Falha de confirmação no Redis não transforma um sucesso no PostgreSQL em DLQ.
-        if (!queue.update(result, token)) throw new IllegalStateException("Confirmação de cadastro não realizada.");
+        if (!queue.update(result, token)) throw new QueueServiceException("Confirmação de cadastro não realizada.");
         log.info("Cadastro finalizado eventId={} status={} errorCode={} timestamp={}",
                 eventId, result.status(), result.errorCode(), result.finishedAt());
     }
@@ -100,6 +110,7 @@ public class ProductRegistrationConsumer implements SmartLifecycle {
             if (!queue.renew(token)) leaseToken = null;
         } catch (RuntimeException ex) {
             leaseToken = null;
+            log.warn("Falha ao renovar concessão da fila.", ex);
         }
     }
 

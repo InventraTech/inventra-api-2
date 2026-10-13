@@ -19,8 +19,12 @@ import lombok.RequiredArgsConstructor;
 public class ProductRegistrationService {
     private final RedisProductRegistrationQueue queue;
     private final KitchenAccessGuard accessGuard;
+    private final com.inventra.api.infrastructure.repository.ProductRepository products;
 
     public ProductRegistrationResponse enqueue(BarcodeRegistrationRequest request) {
+        if (products.existsByBarcode(request.barcode())) {
+            throw new com.inventra.api.infrastructure.exception.BusinessRuleException("Código de barras já cadastrado.");
+        }
         ProductRegistrationJob job = ProductRegistrationJob.queued(accessGuard.currentUser().getId(), request);
         queue.enqueue(job);
         return ProductRegistrationResponse.from(job);

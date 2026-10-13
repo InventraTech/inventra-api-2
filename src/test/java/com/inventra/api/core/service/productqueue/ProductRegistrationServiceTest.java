@@ -25,7 +25,14 @@ import com.inventra.api.infrastructure.security.KitchenAccessGuard;
 class ProductRegistrationServiceTest {
     private final RedisProductRegistrationQueue queue = mock(RedisProductRegistrationQueue.class);
     private final KitchenAccessGuard guard = mock(KitchenAccessGuard.class);
-    private final ProductRegistrationService service = new ProductRegistrationService(queue, guard);
+    private final com.inventra.api.infrastructure.repository.ProductRepository products = mock(com.inventra.api.infrastructure.repository.ProductRepository.class);
+    private final ProductRegistrationService service = new ProductRegistrationService(queue, guard, products);
+
+    @Test void duplicateIsRejectedBeforeEnqueue() {
+        when(products.existsByBarcode(request.barcode())).thenReturn(true);
+        assertThrows(com.inventra.api.infrastructure.exception.BusinessRuleException.class, () -> service.enqueue(request));
+        org.mockito.Mockito.verifyNoInteractions(queue);
+    }
     private final UUID userId = UUID.randomUUID();
     private final BarcodeRegistrationRequest request = new BarcodeRegistrationRequest("Arroz", null, null, 1, "7891234567890", null);
 

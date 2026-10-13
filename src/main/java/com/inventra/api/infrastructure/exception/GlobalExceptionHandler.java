@@ -92,6 +92,13 @@ public class GlobalExceptionHandler {
                 "Serviço de processamento indisponível. Tente novamente em instantes.");
     }
 
+    @ExceptionHandler(QueueServiceException.class)
+    public ProblemDetail handleQueueService(QueueServiceException ex) {
+        log.warn("Falha no serviço de fila errorType={}", ex.getClass().getSimpleName());
+        return buildProblem(HttpStatus.SERVICE_UNAVAILABLE, "Service Unavailable",
+                "Serviço de processamento indisponível. Tente novamente em instantes.");
+    }
+
     @ExceptionHandler(Exception.class)
     public ProblemDetail handleGeneric(Exception ex) {
         if (ex instanceof ErrorResponse errorResponse) {

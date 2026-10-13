@@ -47,6 +47,9 @@ public class Product {
     @Column(name = "barcode", unique = true, length = 50)
     private String barcode;
 
+    @Column(name = "registration_event_id", unique = true)
+    private java.util.UUID registrationEventId;
+
     @Column(name = "photo_url", length = 255)
     private String photoUrl;
 
