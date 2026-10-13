@@ -4,11 +4,14 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.inventra.api.infrastructure.config.RedisConfig;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.data.redis.autoconfigure.DataRedisAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.data.redis.core.RedisTemplate;
 
+// Teste de integração contra um Redis real: só roda quando as credenciais estão no ambiente.
+@EnabledIfEnvironmentVariable(named = "REDIS_HOST", matches = ".+")
 class RedisConnectionTest {
 
     private ApplicationContextRunner contextRunner() {

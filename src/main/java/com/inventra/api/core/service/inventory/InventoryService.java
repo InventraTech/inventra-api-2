@@ -3,6 +3,7 @@ package com.inventra.api.core.service.inventory;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,16 +41,27 @@ public class InventoryService implements InventoryUseCase {
     private final KitchenAccessGuard accessGuard;
 
     @Override
+    @Transactional
     public Inventory open(OpenInventoryRequest request) {
         accessGuard.assertAccess(request.kitchenId());
+
+        // Trava a cozinha até o fim da transação: dois "abrir inventário" simultâneos na mesma cozinha
+        // passam um de cada vez pela checagem abaixo, então nunca ficam dois OPEN.
+        Kitchen kitchen = kitchenRepository.findByIdForUpdate(request.kitchenId())
+            .orElseThrow(() -> new ResourceNotFoundException("Cozinha não encontrada."));
+        if (!Boolean.TRUE.equals(kitchen.getActive())) {
+            throw new BusinessRuleException("Cozinha desativada: reative a cozinha para abrir um inventário.");
+        }
         if (repository.existsByKitchenIdAndStatus(request.kitchenId(), InventoryStatus.OPEN)) {
             throw new BusinessRuleException("Já existe um inventário em aberto para essa cozinha.");
         }
-
-        Kitchen kitchen = kitchenRepository.findById(request.kitchenId())
-            .orElseThrow(() -> new ResourceNotFoundException("Cozinha não encontrada."));
-        User responsible = userRepository.findById(request.responsibleId())
+        // sem responsibleId, o responsável é o usuário logado; informado, precisa ser da mesma cozinha
+        UUID responsibleId = request.responsibleId() != null ? request.responsibleId() : accessGuard.currentUser().getId();
+        User responsible = userRepository.findById(responsibleId)
             .orElseThrow(() -> new ResourceNotFoundException("Usuário responsável não encontrado."));
+        if (responsible.getKitchen() == null || !responsible.getKitchen().getId().equals(kitchen.getId())) {
+            throw new BusinessRuleException("O responsável precisa ser um usuário dessa cozinha.");
+        }
 
         Inventory inventory = Inventory.builder()
             .kitchen(kitchen)
@@ -81,6 +93,12 @@ public class InventoryService implements InventoryUseCase {
 
         StockBatch batch = stockBatchRepository.findById(request.batchId())
             .orElseThrow(() -> new ResourceNotFoundException("Lote não encontrado."));
+        if (!batch.getKitchen().getId().equals(inventory.getKitchen().getId())) {
+            throw new BusinessRuleException("O lote não pertence à cozinha desse inventário.");
+        }
+        if (countRepository.existsByInventoryIdAndBatchId(inventoryId, batch.getId())) {
+            throw new BusinessRuleException("Esse lote já foi contado nesse inventário. Remova a contagem anterior para recontar.");
+        }
 
         BigDecimal registeredQuantity = batch.getCurrentQuantity();
         BigDecimal divergence = request.physicalQuantity().subtract(registeredQuantity);
@@ -127,8 +145,15 @@ public class InventoryService implements InventoryUseCase {
             throw new BusinessRuleException("Inventário sem contagens não pode ser fechado.");
         }
 
+        // Aplica a divergência sobre o saldo atual (e não grava a quantidade física por cima): consumos
+        // e entradas feitos entre a contagem e o fechamento continuam valendo.
         for (InventoryCount count : counts) {
-            stockBatchUseCase.adjust(count.getBatch().getId(), count.getPhysicalQuantity());
+            // lido com lock: o saldo não muda entre esta leitura e o ajuste
+            StockBatch batch = stockBatchRepository.findByIdForUpdate(count.getBatch().getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Lote não encontrado."));
+            BigDecimal divergence = count.getPhysicalQuantity().subtract(count.getRegisteredQuantity());
+            BigDecimal newQuantity = batch.getCurrentQuantity().add(divergence).max(BigDecimal.ZERO);
+            stockBatchUseCase.adjust(batch.getId(), newQuantity);
         }
 
         // sp_close_inventory muda o status para CLOSED e preenche closed_at

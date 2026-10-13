@@ -50,7 +50,10 @@ public class CategoryService implements CategoryUseCase {
     public Category update(Integer id, UpdateCategoryRequest request) {
         Category category = findById(id);
 
-        if (request.name() != null) {
+        if (request.name() != null && !request.name().equals(category.getName())) {
+            if (repository.existsByName(request.name())) {
+                throw new BusinessRuleException("Já existe uma categoria com esse nome.");
+            }
             category.setName(request.name());
         }
         if (request.description() != null) {

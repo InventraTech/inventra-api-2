@@ -38,7 +38,8 @@ public class Requisition {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
-    private RequisitionStatus status = RequisitionStatus.UNDER_REVIEW;
+    @Builder.Default
+    private RequisitionStatus status = RequisitionStatus.DRAFT;
 
     @Column(name = "reason", length = 255)
     private String reason;

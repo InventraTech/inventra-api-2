@@ -5,17 +5,15 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
+import com.inventra.api.core.domain.kitchen.Kitchen;
 import com.inventra.api.core.domain.user.User;
 
-// Regra de negócio: cada usuário (inclusive supervisor/admin) só acessa a cozinha
+// Regra de negócio: cada usuário (inclusive supervisor) só acessa a cozinha
 // do próprio cadastro (user.kitchen) — sem cozinha própria, sem acesso a nada com kitchenId.
 @Component
 public class KitchenAccessGuard {
 
     public void assertAccess(Integer kitchenId) {
-        if (kitchenId == null) {
-            return;
-        }
         if (!hasAccess(kitchenId)) {
             throw new AccessDeniedException("Você não tem acesso a essa cozinha.");
         }
@@ -25,8 +23,17 @@ public class KitchenAccessGuard {
         if (kitchenId == null) {
             return false;
         }
-        User user = currentUser();
-        return user.getKitchen() != null && user.getKitchen().getId().equals(kitchenId);
+        Integer ownKitchenId = currentKitchenId();
+        return ownKitchenId != null && ownKitchenId.equals(kitchenId);
+    }
+
+    public Integer currentKitchenId() {
+        Kitchen kitchen = currentUser().getKitchen();
+        return kitchen != null ? kitchen.getId() : null;
+    }
+
+    public boolean isSupervisor() {
+        return Roles.SUPERVISOR_PROFILE.equalsIgnoreCase(currentUser().getProfile().getAccessType());
     }
 
     public User currentUser() {

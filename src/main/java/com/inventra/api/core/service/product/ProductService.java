@@ -79,7 +79,6 @@ public class ProductService implements ProductUseCase {
             .category(category)
             .unit(unit)
             .barcode(request.barcode())
-            .photoUrl(request.photoUrl())
             .active(true)
             .build();
 
@@ -94,7 +93,8 @@ public class ProductService implements ProductUseCase {
 
     @Override
     public Page<Product> search(String name, Integer categoryId, Boolean active, Pageable pageable) {
-        return repository.search(name, categoryId, active, pageable);
+        // nome vazio = sem filtro (a query não aceita parâmetro nulo, ver ProductRepository.search)
+        return repository.search(name == null ? "" : name, categoryId, active, pageable);
     }
 
     @Override
@@ -181,6 +181,10 @@ public class ProductService implements ProductUseCase {
     @Override
     public void setKitchenParameters(Integer productId, SetKitchenParametersRequest request) {
         accessGuard.assertAccess(request.kitchenId());
+        BigDecimal minStock = Objects.requireNonNullElse(request.minStock(), BigDecimal.ZERO);
+        if (request.maxStock() != null && request.maxStock().compareTo(minStock) < 0) {
+            throw new IllegalArgumentException("O estoque máximo não pode ser menor que o estoque mínimo.");
+        }
         Product product = findById(productId);
         Kitchen kitchen = kitchenRepository.findById(request.kitchenId())
             .orElseThrow(() -> new ResourceNotFoundException("Cozinha não encontrada."));
@@ -189,7 +193,7 @@ public class ProductService implements ProductUseCase {
             .id(new ProductKitchenParameterId(productId, kitchen.getId()))
             .product(product)
             .kitchen(kitchen)
-            .minStock(Objects.requireNonNullElse(request.minStock(), BigDecimal.ZERO))
+            .minStock(minStock)
             .maxStock(request.maxStock())
             .averageDailyConsumption(request.averageDailyConsumption())
             .build();
@@ -206,8 +210,11 @@ public class ProductService implements ProductUseCase {
 
     @Override
     public List<ProductKitchenParameterResponse> listKitchenParameters(Integer productId) {
-        return productKitchenParameterRepository.findByProduct_Id(productId).stream()
-            .filter(parameter -> accessGuard.hasAccess(parameter.getKitchen().getId()))
+        Integer kitchenId = accessGuard.currentKitchenId();
+        if (kitchenId == null) {
+            return List.of();
+        }
+        return productKitchenParameterRepository.findByProduct_IdAndKitchen_Id(productId, kitchenId).stream()
             .map(parameter -> {
                 BigDecimal current = stockBatchRepository.sumActiveQuantity(productId, parameter.getKitchen().getId());
                 return ProductKitchenParameterResponse.from(parameter, current);

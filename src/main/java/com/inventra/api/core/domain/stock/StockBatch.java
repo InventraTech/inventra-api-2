@@ -65,5 +65,6 @@ public class StockBatch {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
+    @Builder.Default
     private StockBatchStatus status = StockBatchStatus.ACTIVE;
 }

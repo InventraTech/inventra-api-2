@@ -34,6 +34,7 @@ public class ProductKitchenParameter {
     private Kitchen kitchen;
 
     @Column(name = "min_stock", nullable = false, precision = 12, scale = 3)
+    @Builder.Default
     private BigDecimal minStock = BigDecimal.ZERO;
 
     @Column(name = "max_stock", precision = 12, scale = 3)

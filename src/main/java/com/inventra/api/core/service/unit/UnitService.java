@@ -50,7 +50,10 @@ public class UnitService implements UnitUseCase {
     public Unit update(Integer id, UpdateUnitRequest request) {
         Unit unit = findById(id);
 
-        if (request.symbol() != null) {
+        if (request.symbol() != null && !request.symbol().equals(unit.getSymbol())) {
+            if (repository.existsBySymbol(request.symbol())) {
+                throw new BusinessRuleException("Já existe uma unidade de medida com esse símbolo.");
+            }
             unit.setSymbol(request.symbol());
         }
         if (request.description() != null) {

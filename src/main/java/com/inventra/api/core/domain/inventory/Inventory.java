@@ -47,6 +47,7 @@ public class Inventory {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
+    @Builder.Default
     private InventoryStatus status = InventoryStatus.OPEN;
 
     @Column(name = "note", length = 255)

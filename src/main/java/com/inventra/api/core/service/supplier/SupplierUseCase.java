@@ -14,6 +14,9 @@ public interface SupplierUseCase {
 
     List<Supplier> listActive();
 
+    // fornecedores ativos que já entregaram algum lote na cozinha
+    List<Supplier> listActiveByKitchen(Integer kitchenId);
+
     Supplier update(Integer id, UpdateSupplierRequest request);
 
     void activate(Integer id);

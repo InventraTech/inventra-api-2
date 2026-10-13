@@ -10,4 +10,6 @@ public interface InventoryCountRepository extends JpaRepository<InventoryCount, 
 
     List<InventoryCount> findByInventoryId(Integer inventoryId);
 
+    boolean existsByInventoryIdAndBatchId(Integer inventoryId, Integer batchId);
+
 }

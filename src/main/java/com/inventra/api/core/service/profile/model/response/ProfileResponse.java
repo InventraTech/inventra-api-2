@@ -1,6 +1,7 @@
 package com.inventra.api.core.service.profile.model.response;
 
 import com.inventra.api.core.domain.profile.Profile;
+import com.inventra.api.core.domain.profile.AccessType;
 
 public record ProfileResponse(
         Integer id,
@@ -10,7 +11,7 @@ public record ProfileResponse(
     public static ProfileResponse fromEntity(Profile profile) {
         return new ProfileResponse(
                 profile.getId(),
-                profile.getAccessType(),
+                AccessType.display(profile.getAccessType()),
                 profile.getDescription()
         );
     }

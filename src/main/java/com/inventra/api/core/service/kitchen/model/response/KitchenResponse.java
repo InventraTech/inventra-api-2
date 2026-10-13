@@ -9,6 +9,11 @@ public record KitchenResponse(
         String name,
         String code,
         String address,
+        String city,
+        String state,
+        Double latitude,
+        Double longitude,
+        Boolean acceptingRequests,
         Boolean active,
         LocalDateTime createdAt
 ) {
@@ -18,6 +23,11 @@ public record KitchenResponse(
                 kitchen.getName(),
                 kitchen.getCode(),
                 kitchen.getAddress(),
+                kitchen.getCity(),
+                kitchen.getState(),
+                kitchen.getLatitude(),
+                kitchen.getLongitude(),
+                kitchen.getAcceptingRequests(),
                 kitchen.getActive(),
                 kitchen.getCreatedAt()
         );

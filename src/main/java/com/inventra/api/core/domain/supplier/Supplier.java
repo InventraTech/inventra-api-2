@@ -42,6 +42,7 @@ public class Supplier {
     private Integer rating;
 
     @Column(name = "active", nullable = false)
+    @Builder.Default
     private Boolean active = true;
 
     @CreatedDate

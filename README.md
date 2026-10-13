@@ -68,7 +68,12 @@ CORS_ALLOWED_ORIGINS=http://localhost:3000
 CLOUDINARY_CLOUD_NAME=
 CLOUDINARY_API_KEY=
 CLOUDINARY_API_SECRET=
+
+# Login com Google (opcional): chave da conta de serviço do Firebase, o JSON puro ou em base64
+FIREBASE_CREDENTIALS_JSON=
 ```
+
+A lista completa, com os valores padrão, está em [`.env.example`](.env.example). A chave do Firebase **nunca** vai para o repositório; sem ela a API sobe normalmente e só `POST /api/auth/google` responde **503**.
 
 Uploads são limitados a **5 MB** por arquivo/request (`spring.servlet.multipart.max-file-size`).
 
@@ -88,6 +93,8 @@ Uploads são limitados a **5 MB** por arquivo/request (`spring.servlet.multipart
 
 A aplicação sobe em `http://localhost:8080`. O Flyway aplica as migrations de `src/main/resources/db/migration/` automaticamente na primeira execução.
 
+> **Migrations não são editadas aqui.** O repositório [inventra-data-modeling-2](https://github.com/InventraTech/inventra-data-modeling-2) é a fonte da verdade do schema: toda mudança nasce lá (`postgre/migrations`) e é copiada byte a byte para `db/migration`, mantendo os mesmos nomes (`V001__...`, `V002__...`).
+
 - **Swagger UI:** `http://localhost:8080/swagger-ui.html` — para chamar endpoints protegidos, faça login (ou registre-se), clique em **Authorize** e cole o `token` (sem o prefixo `Bearer`)
 - **OpenAPI JSON:** `http://localhost:8080/v3/api-docs`
 - **Health check:** `http://localhost:8080/actuator/health`
@@ -106,18 +113,20 @@ Resumo:
 
 | Recurso            | Base path              | Acesso                                                             |
 |:-------------------|:-----------------------|:-------------------------------------------------------------------|
-| Autenticação       | `/api/auth`            | `POST /login` e `POST /register` públicos                          |
-| Usuários           | `/api/users`           | Autenticado                                                        |
-| Perfis             | `/api/profiles`        | Autenticado                                                        |
-| Cozinhas           | `/api/kitchens`        | Autenticado                                                        |
-| Categorias         | `/api/categories`      | Autenticado                                                        |
-| Unidades de medida | `/api/units`           | Autenticado                                                        |
-| Fornecedores       | `/api/suppliers`       | Autenticado                                                        |
-| Produtos           | `/api/products`        | Autenticado — parâmetros e listagens filtrados pela cozinha        |
-| Lotes de estoque   | `/api/stock-batches`   | Autenticado — escopo por cozinha                                   |
-| Inventários        | `/api/inventories`     | Autenticado — escopo por cozinha                                   |
-| Requisições        | `/api/requisitions`    | Autenticado — escopo por cozinha                                   |
-| Alertas            | `/api/alerts`          | Autenticado — escopo por cozinha                                   |
+| Autenticação       | `/api/auth`            | `POST /login`, `/register`, `/google`, `/refresh` e `/logout` públicos |
+| Usuários           | `/api/users`           | Supervisor (criar/listar/ativar/desativar); cada um edita o próprio nome e senha |
+| Perfis             | `/api/profiles`        | Leitura: autenticado — escrita: supervisor                         |
+| Cozinhas           | `/api/kitchens`        | Leitura: autenticado — escrita: supervisor; escopo por cozinha. `GET /discover` lista as cozinhas abertas a pedidos de entrada (qualquer usuário autenticado) |
+| Acesso à cozinha   | `/api/kitchen-access-requests` | Pedir entrada (por `kitchenId` ou `code`): autenticado sem cozinha — decidir: supervisor |
+| Categorias         | `/api/categories`      | Leitura: autenticado — escrita: supervisor                         |
+| Unidades de medida | `/api/units`           | Leitura: autenticado — escrita: supervisor                         |
+| Fornecedores       | `/api/suppliers`       | Leitura: autenticado — escrita: supervisor                         |
+| Produtos           | `/api/products`        | Leitura: autenticado — escrita: supervisor; parâmetros filtrados pela cozinha. `GET /by-barcode/{barcode}` consulta o catálogo e depois o OpenFoodFacts |
+| Lotes de estoque   | `/api/stock-batches`   | Supervisor e estoquista — escopo por cozinha. `POST /consume` dá baixa por produto, nos lotes que vencem primeiro |
+| Movimentações      | `/api/stock-movements` | Supervisor e estoquista — histórico de entradas, baixas e ajustes  |
+| Inventários        | `/api/inventories`     | Supervisor e estoquista — escopo por cozinha                       |
+| Requisições        | `/api/requisitions`    | Supervisor e comprador (aprovar/rejeitar: supervisor) — escopo por cozinha. Nasce `DRAFT`; `PATCH /{id}/submit` envia para análise |
+| Alertas            | `/api/alerts`          | Consultar e marcar como lido: qualquer usuário da cozinha, só os alertas dele — criar/deletar: supervisor — `POST /unregistered-product`: supervisor e estoquista |
 | Swagger / OpenAPI  | `/swagger-ui/**`, `/v3/api-docs/**` | Público                                               |
 | Health             | `/actuator/health`     | Público                                                            |
 
@@ -129,11 +138,14 @@ Authorization: Bearer <token>
 
 **Regras de autorização:**
 
-- Toda requisição (fora dos endpoints públicos acima) exige JWT válido; token inválido/expirado → **401**. Conta desativada (`active = false`) → **403** no login.
+- Toda requisição (fora dos endpoints públicos acima) exige JWT válido; token inválido/expirado → **401**. Conta desativada (`active = false`) → **403** no login, e os tokens já emitidos param de valer na hora.
+- **Papéis:** só existem `supervisor` (faz tudo), `estoquista` (fluxos de entrada e baixa de estoque) e `comprador` (requisições). Endpoint fora do papel → **403** (`@PreAuthorize` com as expressões de `infrastructure/security/Roles`).
 - **Escopo por cozinha (`KitchenAccessGuard`):** todo usuário só enxerga dados da própria `user.kitchen`. Endpoints que recebem `kitchenId` validam e retornam **403** se divergir; listagens multi-cozinha filtram silenciosamente.
-- Usuários **sem cozinha atribuída** (recém-cadastrados via `/api/auth/register`) só conseguem usar endpoints administrativos sem `kitchenId` (perfis, cozinhas, categorias, unidades, fornecedores, usuários).
-- `POST /api/auth/register` não aceita `ADMIN` como `accessType` — contas admin não são criadas por essa rota.
+- Usuários **sem cozinha atribuída** (recém-cadastrados via `/api/auth/register`) não acessam nada com `kitchenId`. Um supervisor vincula o usuário à cozinha dele, ou o supervisor recém-cadastrado cria a própria cozinha (`POST /api/kitchens`) e já fica vinculado a ela. Ninguém vincula usuário a uma cozinha que não seja a sua.
+- `POST /api/auth/register` aceita só `SUPERVISOR`, `ESTOQUISTA` e `COMPRADOR` como `accessType`.
 - `password_hash` nunca aparece em respostas: o `User` só expõe `id`, `name`, `email`, `kitchen`, `profile`, `active`, `lastLogin`, `createdAt`.
+- Desativar a conta ou trocar a senha invalida na hora os tokens já emitidos (o token carrega o `id` do usuário e uma impressão digital da senha). Login com 5 senhas erradas seguidas (mesmo e-mail + IP) bloqueia por 15 minutos (**429**).
+- Os perfis base `supervisor`, `estoquista` e `comprador` não podem ser renomeados nem excluídos.
 - Erros seguem o padrão **`application/problem+json`** (RFC 7807) — detalhes por status em [`docs/docs.md` §14](docs/docs.md#14-códigos-http-e-erros).
 
 ## Estrutura
@@ -154,7 +166,7 @@ src/main/java/com/inventra/api/
 
 src/main/resources/
 ├── application.properties
-└── db/migration/       # Flyway (V1__init_database.sql, ...)
+└── db/migration/       # Flyway (V001..V009): copia exata de inventra-data-modeling-2/postgre/migrations
 ```
 
 ## Coleção Bruno

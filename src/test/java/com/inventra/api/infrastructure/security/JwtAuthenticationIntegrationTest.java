@@ -1,11 +1,12 @@
 package com.inventra.api.infrastructure.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-import static org.mockito.Mockito.verify;
 
 import java.util.UUID;
 
@@ -25,17 +26,19 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.inventra.api.core.domain.kitchen.Kitchen;
 import com.inventra.api.core.domain.profile.AccessType;
 import com.inventra.api.core.domain.profile.Profile;
 import com.inventra.api.core.domain.user.User;
 import com.inventra.api.core.service.auth.model.request.LoginRequest;
 import com.inventra.api.core.service.auth.model.request.RegisterRequest;
 import com.inventra.api.core.service.auth.model.response.LoginResponse;
+import com.inventra.api.core.service.productqueue.model.ProductRegistrationJob;
 import com.inventra.api.infrastructure.client.openfoodfacts.OpenFoodFactsClient;
+import com.inventra.api.infrastructure.redis.queue.RedisProductRegistrationQueue;
+import com.inventra.api.infrastructure.repository.KitchenRepository;
 import com.inventra.api.infrastructure.repository.ProfileRepository;
 import com.inventra.api.infrastructure.repository.UserRepository;
-import com.inventra.api.infrastructure.redis.queue.RedisProductRegistrationQueue;
-import com.inventra.api.core.service.productqueue.model.ProductRegistrationJob;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -68,13 +71,17 @@ class JwtAuthenticationIntegrationTest {
 
     private String email;
 
+    private User user;
+
+    @Autowired
+    private KitchenRepository kitchenRepository;
+
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(strings = {"comprador", "estoquista"})
     void restrictedRolesCannotCreateProductsThroughEitherEndpoint(String role) throws Exception {
-        var profile = profileRepository.findByAccessType(role).orElseGet(
+        Profile roleProfile = profileRepository.findByAccessType(role).orElseGet(
                 () -> profileRepository.saveAndFlush(Profile.builder().accessType(role).build()));
-        var user = userRepository.findByEmail(email).orElseThrow();
-        user.setProfile(profile);
+        user.setProfile(roleProfile);
         userRepository.saveAndFlush(user);
         String token = login(email, RAW_PASSWORD);
         for (String url : java.util.List.of("/api/products", "/api/products/barcode-registrations")) {
@@ -89,7 +96,6 @@ class JwtAuthenticationIntegrationTest {
     @Test
     void supervisorCanEnqueueAndReachNormalProductCreation() throws Exception {
         ensureProfile("supervisor");
-        var user = userRepository.findByEmail(email).orElseThrow();
         user.setProfile(profileRepository.findByAccessType("supervisor").orElseThrow());
         userRepository.saveAndFlush(user);
         String token = login(email, RAW_PASSWORD);
@@ -98,42 +104,9 @@ class JwtAuthenticationIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"Arroz\",\"unitId\":1,\"barcode\":\"7891234567890\"}"))
                 .andExpect(status().isAccepted());
-        // Validação de corpo confirma que passou pelo RBAC, sem depender de produto/unidade existentes.
         mockMvc.perform(post("/api/products").header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON).content("{"))
                 .andExpect(status().isBadRequest());
-    }
-
-    @BeforeEach
-    void seedUser() {
-        // saveAndFlush: o login roda numa sessão JPA separada (por requisição via MockMvc),
-        // que só enxerga o que já foi enviado ao banco na transação compartilhada do teste.
-        Profile profile = profileRepository.findByAccessType("ADMIN")
-                .orElseGet(() -> profileRepository.saveAndFlush(Profile.builder().accessType("ADMIN").build()));
-
-        email = "test-" + UUID.randomUUID() + "@inventra.com";
-        userRepository.saveAndFlush(User.builder()
-                .id(UUID.randomUUID())
-                .name("Usuário de Teste")
-                .email(email)
-                .passwordHash(passwordEncoder.encode(RAW_PASSWORD))
-                .profile(profile)
-                .active(true)
-                .build());
-    }
-
-    @Test
-    void validTokenGrantsAccessToProtectedEndpoint() throws Exception {
-        String token = login(email, RAW_PASSWORD);
-
-        mockMvc.perform(get("/api/users").header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
-                .andExpect(status().isOk());
-    }
-
-    @Test
-    void missingTokenIsRejected() throws Exception {
-        mockMvc.perform(get("/api/users"))
-                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -148,6 +121,9 @@ class JwtAuthenticationIntegrationTest {
 
     @Test
     void validTokenEnqueuesRegistrationWithAuthenticatedUser() throws Exception {
+        ensureProfile("supervisor");
+        user.setProfile(profileRepository.findByAccessType("supervisor").orElseThrow());
+        userRepository.saveAndFlush(user);
         String token = login(email, RAW_PASSWORD);
         mockMvc.perform(post("/api/products/barcode-registrations")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
@@ -156,16 +132,143 @@ class JwtAuthenticationIntegrationTest {
                 .andExpect(status().isAccepted());
         var captor = ArgumentCaptor.forClass(ProductRegistrationJob.class);
         verify(productRegistrationQueue).enqueue(captor.capture());
-        org.assertj.core.api.Assertions.assertThat(captor.getValue().userId())
-                .isEqualTo(userRepository.findByEmail(email).orElseThrow().getId());
+        assertThat(captor.getValue().userId()).isEqualTo(user.getId());
+    }
+
+    @BeforeEach
+    void seedUser() {
+        // saveAndFlush: o login roda numa sessão JPA separada (por requisição via MockMvc),
+        // que só enxerga o que já foi enviado ao banco na transação compartilhada do teste.
+        // estoquista (e não supervisor): os testes de register contam os perfis "supervisor" criados
+        Profile profile = profileRepository.findByAccessType("estoquista")
+                .orElseGet(() -> profileRepository.saveAndFlush(Profile.builder().accessType("estoquista").build()));
+
+        email = "test-" + UUID.randomUUID() + "@inventra.com";
+        user = userRepository.saveAndFlush(User.builder()
+                .id(UUID.randomUUID())
+                .name("Usuário de Teste")
+                .email(email)
+                .passwordHash(passwordEncoder.encode(RAW_PASSWORD))
+                .profile(profile)
+                .active(true)
+                .build());
+    }
+
+    @Test
+    void validTokenGrantsAccessToProtectedEndpoint() throws Exception {
+        String token = login(email, RAW_PASSWORD);
+
+        mockMvc.perform(get("/api/users/" + user.getId()).header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk());
+    }
+
+    // RBAC: listar usuários é exclusivo do supervisor.
+    @Test
+    void nonSupervisorCannotListUsers() throws Exception {
+        String token = login(email, RAW_PASSWORD);
+
+        mockMvc.perform(get("/api/users").header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isForbidden());
+    }
+
+    // Antes, qualquer usuário trocava o próprio kitchenId e passava a acessar outra cozinha.
+    @Test
+    void userCannotAssignThemselvesToAnotherKitchen() throws Exception {
+        String token = login(email, RAW_PASSWORD);
+        Kitchen other = kitchenRepository.saveAndFlush(Kitchen.builder()
+                .name("Outra")
+                .code("K-" + UUID.randomUUID().toString().substring(0, 8))
+                .build());
+
+        mockMvc.perform(put("/api/users/" + user.getId())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"kitchenId\":" + other.getId() + "}"))
+                .andExpect(status().isForbidden());
+    }
+
+    // RBAC: inventário é do supervisor e do estoquista (o usuário semeado é estoquista).
+    @Test
+    void estoquistaCanOpenInventoryInOwnKitchen() throws Exception {
+        Kitchen kitchen = assignNewKitchen(user);
+        String token = login(email, RAW_PASSWORD);
+
+        mockMvc.perform(post("/api/inventories")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"kitchenId\":" + kitchen.getId() + "}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.status").value("OPEN"))
+                .andExpect(jsonPath("$.responsible.id").value(user.getId().toString()));
+    }
+
+    @Test
+    void compradorCannotAccessInventory() throws Exception {
+        Profile comprador = profileRepository.findByAccessType("comprador")
+                .orElseGet(() -> profileRepository.saveAndFlush(Profile.builder().accessType("comprador").build()));
+        String compradorEmail = "comprador-" + UUID.randomUUID() + "@inventra.com";
+        User compradorUser = userRepository.saveAndFlush(User.builder()
+                .id(UUID.randomUUID())
+                .name("Comprador de Teste")
+                .email(compradorEmail)
+                .passwordHash(passwordEncoder.encode(RAW_PASSWORD))
+                .profile(comprador)
+                .active(true)
+                .build());
+        Kitchen kitchen = assignNewKitchen(compradorUser);
+        String token = login(compradorEmail, RAW_PASSWORD);
+
+        mockMvc.perform(post("/api/inventories")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"kitchenId\":" + kitchen.getId() + "}"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/inventories?kitchenId=" + kitchen.getId())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void tokenStopsWorkingWhenUserIsDeactivated() throws Exception {
+        String token = login(email, RAW_PASSWORD);
+        user.setActive(false);
+        userRepository.saveAndFlush(user);
+
+        mockMvc.perform(get("/api/users/" + user.getId()).header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void loginIsCaseInsensitiveOnEmail() throws Exception {
+        login(email.toUpperCase(), RAW_PASSWORD);
+    }
+
+    @Test
+    void malformedJsonReturnsBadRequestInsteadOfServerError() throws Exception {
+        mockMvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON).content("{"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void unknownRouteReturnsNotFoundInsteadOfServerError() throws Exception {
+        String token = login(email, RAW_PASSWORD);
+
+        mockMvc.perform(get("/api/nao-existe").header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void missingTokenIsRejected() throws Exception {
+        mockMvc.perform(get("/api/users"))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
     void tamperedTokenIsRejected() throws Exception {
         String token = login(email, RAW_PASSWORD);
-        int signatureStart = token.lastIndexOf('.') + 1;
-        String tampered = token.substring(0, signatureStart)
-                + (token.charAt(signatureStart) == 'A' ? 'B' : 'A') + token.substring(signatureStart + 1);
+        // troca um caractere do meio da assinatura: o último carrega só 4 bits úteis e às vezes não altera a assinatura
+        int index = token.length() - 10;
+        String tampered = token.substring(0, index) + (token.charAt(index) == 'A' ? 'B' : 'A') + token.substring(index + 1);
 
         mockMvc.perform(get("/api/users").header(HttpHeaders.AUTHORIZATION, "Bearer " + tampered))
                 .andExpect(status().isUnauthorized());
@@ -185,7 +288,7 @@ class JwtAuthenticationIntegrationTest {
 
         LoginResponse response = objectMapper.readValue(body, LoginResponse.class);
         assertThat(response.token()).isNotBlank();
-        assertThat(response.user().profile().accessType()).isEqualTo("supervisor");
+        assertThat(response.user().profile().accessType()).isEqualTo("SUPERVISOR");
         assertThat(countProfiles("supervisor")).isEqualTo(1);
     }
 
@@ -245,6 +348,16 @@ class JwtAuthenticationIntegrationTest {
 
         mockMvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON).content(json))
                 .andExpect(status().isBadRequest());
+    }
+
+    private Kitchen assignNewKitchen(User target) {
+        Kitchen kitchen = kitchenRepository.saveAndFlush(Kitchen.builder()
+                .name("Cozinha de Teste")
+                .code("K-" + UUID.randomUUID().toString().substring(0, 8))
+                .build());
+        target.setKitchen(kitchen);
+        userRepository.saveAndFlush(target);
+        return kitchen;
     }
 
     private Integer registerAndGetProfileId() throws Exception {
