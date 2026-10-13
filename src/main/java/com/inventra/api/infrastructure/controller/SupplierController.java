@@ -42,10 +42,12 @@ public class SupplierController {
         return ResponseEntity.ok(SupplierResponse.fromEntity(useCase.findById(id)));
     }
 
-    @Operation(summary = "Lista os fornecedores ativos")
+    @Operation(summary = "Lista os fornecedores ativos",
+            description = "Com kitchenId, só os que já entregaram algum lote na cozinha (a do próprio usuário).")
     @GetMapping
-    public ResponseEntity<List<SupplierResponse>> listActive() {
-        List<SupplierResponse> responses = useCase.listActive().stream()
+    public ResponseEntity<List<SupplierResponse>> listActive(@RequestParam(required = false) Integer kitchenId) {
+        List<Supplier> suppliers = kitchenId != null ? useCase.listActiveByKitchen(kitchenId) : useCase.listActive();
+        List<SupplierResponse> responses = suppliers.stream()
                 .map(SupplierResponse::fromEntity)
                 .toList();
         return ResponseEntity.ok(responses);

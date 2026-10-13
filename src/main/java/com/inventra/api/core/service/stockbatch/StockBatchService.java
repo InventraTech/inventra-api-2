@@ -10,9 +10,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.inventra.api.core.service.stockbatch.model.request.RegisterStockEntryRequest;
+import com.inventra.api.core.service.stockbatch.model.response.KitchenStockItemResponse;
 import com.inventra.api.core.service.stockbatch.model.response.LowStockAlertResponse;
 import com.inventra.api.core.domain.kitchen.Kitchen;
 import com.inventra.api.core.domain.product.Product;
+import com.inventra.api.core.domain.product.ProductKitchenParameter;
 import com.inventra.api.core.domain.stock.StockBatch;
 import com.inventra.api.core.domain.stock.enums.StockBatchStatus;
 import com.inventra.api.core.domain.supplier.Supplier;
@@ -193,6 +195,34 @@ public class StockBatchService implements StockBatchUseCase {
     public List<StockBatch> listByKitchen(Integer kitchenId) {
         accessGuard.assertAccess(kitchenId);
         return repository.findByKitchenId(kitchenId);
+    }
+
+    @Override
+    public List<StockBatch> listByKitchenAndProduct(Integer kitchenId, Integer productId) {
+        accessGuard.assertAccess(kitchenId);
+        return repository.findByKitchenIdAndProductId(kitchenId, productId);
+    }
+
+    @Override
+    public List<KitchenStockItemResponse> summarizeKitchenStock(Integer kitchenId, Integer categoryId, String name) {
+        accessGuard.assertAccess(kitchenId);
+        // duas consultas, independente do tamanho da cozinha: os produtos ligados a ela (com o parâmetro de
+        // estoque, se houver) e o resumo dos lotes utilizáveis de todos de uma vez
+        Map<Integer, Object[]> usable = new HashMap<>();
+        repository.summarizeUsableByProduct(kitchenId, LocalDate.now()).forEach(row -> usable.put((Integer) row[0], row));
+        return productRepository.findKitchenProducts(kitchenId, name == null ? "" : name.trim(), categoryId).stream()
+            .map(row -> {
+                Product product = (Product) row[0];
+                var parameter = (ProductKitchenParameter) row[1];
+                Object[] summary = usable.get(product.getId());
+                return KitchenStockItemResponse.of(
+                    product,
+                    summary == null ? BigDecimal.ZERO : (BigDecimal) summary[1],
+                    summary == null ? 0 : ((Number) summary[2]).intValue(),
+                    summary == null ? null : (LocalDate) summary[3],
+                    parameter == null ? null : parameter.getMinStock());
+            })
+            .toList();
     }
 
     @Override

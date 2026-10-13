@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -19,13 +20,16 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.access.AccessDeniedException;
 
 import com.inventra.api.core.domain.supplier.Supplier;
 import com.inventra.api.core.service.supplier.model.request.CreateSupplierRequest;
 import com.inventra.api.core.service.supplier.model.request.UpdateSupplierRequest;
 import com.inventra.api.infrastructure.exception.BusinessRuleException;
 import com.inventra.api.infrastructure.exception.ResourceNotFoundException;
+import com.inventra.api.infrastructure.repository.StockBatchRepository;
 import com.inventra.api.infrastructure.repository.SupplierRepository;
+import com.inventra.api.infrastructure.security.KitchenAccessGuard;
 
 @ExtendWith(MockitoExtension.class)
 class SupplierServiceTest {
@@ -33,6 +37,8 @@ class SupplierServiceTest {
     private static final String CNPJ = "12.345.678/0001-90";
 
     @Mock private SupplierRepository repository;
+    @Mock private StockBatchRepository stockBatchRepository;
+    @Mock private KitchenAccessGuard accessGuard;
 
     @InjectMocks private SupplierService service;
 
@@ -86,6 +92,23 @@ class SupplierServiceTest {
         when(repository.findByActiveTrue()).thenReturn(active);
 
         assertSame(active, service.listActive());
+    }
+
+    @Test
+    void listActiveByKitchenReturnsSuppliersWithBatchesInTheKitchen() {
+        List<Supplier> suppliers = List.of(supplier());
+        when(stockBatchRepository.findActiveSuppliersByKitchen(7)).thenReturn(suppliers);
+
+        assertSame(suppliers, service.listActiveByKitchen(7));
+        verify(accessGuard).assertAccess(7);
+    }
+
+    @Test
+    void listActiveByKitchenDeniesAnotherUsersKitchen() {
+        doThrow(new AccessDeniedException("sem acesso")).when(accessGuard).assertAccess(8);
+
+        assertThrows(AccessDeniedException.class, () -> service.listActiveByKitchen(8));
+        verify(stockBatchRepository, never()).findActiveSuppliersByKitchen(any());
     }
 
     @Test

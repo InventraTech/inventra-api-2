@@ -307,6 +307,144 @@ class CrudEndpointsIntegrationTest {
                 .andExpect(status().isBadRequest());
     }
 
+    // ===== Telas do app: estoque da cozinha, lotes por produto, fornecedores da cozinha =====
+
+    private int batchOf(int productId, Integer supplierId, String batchNumber, int quantity, String expiration)
+            throws Exception {
+        return createAndGetId("/api/stock-batches",
+                "{\"productId\":" + productId + ",\"kitchenId\":" + kitchen.getId()
+                        + (supplierId != null ? ",\"supplierId\":" + supplierId : "")
+                        + ",\"batchNumber\":\"" + batchNumber + "\",\"initialQuantity\":" + quantity
+                        + ",\"entryDate\":\"2026-10-01\",\"expirationDate\":\"" + expiration + "\"}");
+    }
+
+    @Test
+    void kitchenStockSummaryListsOnlyProductsLinkedToTheKitchen() throws Exception {
+        int unitId = createAndGetId("/api/units", "{\"symbol\":\"ltr\",\"description\":\"Litro\"}");
+        int dairyId = createAndGetId("/api/categories", "{\"name\":\"Laticínios\"}");
+        int grainId = createAndGetId("/api/categories", "{\"name\":\"Grãos\"}");
+        int withBatches = createAndGetId("/api/products",
+                "{\"name\":\"Leite Integral\",\"brand\":\"Italac\",\"categoryId\":" + dairyId + ",\"unitId\":" + unitId + "}");
+        int parameterOnly = createAndGetId("/api/products",
+                "{\"name\":\"Arroz Parametro\",\"categoryId\":" + grainId + ",\"unitId\":" + unitId + "}");
+        int expiredOnly = createAndGetId("/api/products",
+                "{\"name\":\"Creme Vencido\",\"categoryId\":" + dairyId + ",\"unitId\":" + unitId + "}");
+        createAndGetId("/api/products", "{\"name\":\"Nunca Usado\",\"unitId\":" + unitId + "}");
+
+        batchOf(withBatches, null, "LEITE1", 12, "2099-12-31");
+        batchOf(withBatches, null, "LEITE2", 6, "2099-06-30");
+        batchOf(expiredOnly, null, "VELHO", 9, "2026-10-02");
+        send(put("/api/products/" + parameterOnly + "/kitchen-parameters"),
+                "{\"kitchenId\":" + kitchen.getId() + ",\"minStock\":10,\"maxStock\":50}")
+                .andExpect(status().isNoContent());
+        send(put("/api/products/" + withBatches + "/kitchen-parameters"),
+                "{\"kitchenId\":" + kitchen.getId() + ",\"minStock\":10}")
+                .andExpect(status().isNoContent());
+
+        // ordenado por nome; produto que nunca foi usado na cozinha fica de fora
+        send(get("/api/kitchens/" + kitchen.getId() + "/stock"), null)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(3))
+                .andExpect(jsonPath("$[0].product.name").value("Arroz Parametro"))
+                .andExpect(jsonPath("$[0].totalQuantity").value(0))
+                .andExpect(jsonPath("$[0].activeBatches").value(0))
+                .andExpect(jsonPath("$[0].nextExpirationDate").doesNotExist())
+                .andExpect(jsonPath("$[0].minStock").value(10))
+                .andExpect(jsonPath("$[0].lowStock").value(true))
+                .andExpect(jsonPath("$[0].category.name").value("Grãos"))
+                .andExpect(jsonPath("$[1].product.name").value("Creme Vencido"))
+                .andExpect(jsonPath("$[1].totalQuantity").value(0))
+                .andExpect(jsonPath("$[1].minStock").doesNotExist())
+                .andExpect(jsonPath("$[1].lowStock").value(false))
+                .andExpect(jsonPath("$[2].product.name").value("Leite Integral"))
+                .andExpect(jsonPath("$[2].product.brand").value("Italac"))
+                .andExpect(jsonPath("$[2].unit.symbol").value("ltr"))
+                .andExpect(jsonPath("$[2].totalQuantity").value(18))
+                .andExpect(jsonPath("$[2].activeBatches").value(2))
+                .andExpect(jsonPath("$[2].nextExpirationDate").value("2099-06-30"))
+                .andExpect(jsonPath("$[2].lowStock").value(false));
+
+        send(get("/api/kitchens/" + kitchen.getId() + "/stock").param("categoryId", String.valueOf(dairyId)), null)
+                .andExpect(jsonPath("$.length()").value(2));
+        send(get("/api/kitchens/" + kitchen.getId() + "/stock").param("name", "LEITE"), null)
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].product.id").value(withBatches));
+
+        // produto desativado some do resumo
+        send(patch("/api/products/" + withBatches + "/deactivate"), null).andExpect(status().isNoContent());
+        send(get("/api/kitchens/" + kitchen.getId() + "/stock").param("name", "leite"), null)
+                .andExpect(jsonPath("$.length()").value(0));
+    }
+
+    @Test
+    void kitchenStockSummaryOfAnotherKitchenIsForbidden() throws Exception {
+        Kitchen other = kitchenRepository.saveAndFlush(Kitchen.builder()
+                .name("Outra").code("O-" + UUID.randomUUID().toString().substring(0, 8)).build());
+
+        send(get("/api/kitchens/" + other.getId() + "/stock"), null).andExpect(status().isForbidden());
+    }
+
+    @Test
+    void productSearchWorksWithoutTheNameFilter() throws Exception {
+        int unitId = createAndGetId("/api/units", "{\"symbol\":\"pct\",\"description\":\"Pacote\"}");
+        int productId = createAndGetId("/api/products", "{\"name\":\"Macarrão\",\"unitId\":" + unitId + "}");
+
+        send(get("/api/products").param("active", "true").param("size", "200"), null)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[?(@.id == " + productId + ")]").exists());
+    }
+
+    @Test
+    void stockBatchListFiltersByProductWhenKitchenIsAlsoGiven() throws Exception {
+        int unitId = createAndGetId("/api/units", "{\"symbol\":\"und\",\"description\":\"Unidade\"}");
+        int first = createAndGetId("/api/products", "{\"name\":\"Óleo\",\"unitId\":" + unitId + "}");
+        int second = createAndGetId("/api/products", "{\"name\":\"Vinagre\",\"unitId\":" + unitId + "}");
+        int firstBatch = batchOf(first, null, "O1", 5, "2099-01-01");
+        int secondBatch = batchOf(second, null, "V1", 5, "2099-01-01");
+        String kitchenId = String.valueOf(kitchen.getId());
+
+        send(get("/api/stock-batches").param("kitchenId", kitchenId).param("productId", String.valueOf(first)), null)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].id").value(firstBatch));
+        send(get("/api/stock-batches").param("kitchenId", kitchenId), null)
+                .andExpect(jsonPath("$[?(@.id == " + secondBatch + ")]").exists());
+    }
+
+    @Test
+    void supplierListFiltersByKitchenBatches() throws Exception {
+        int unitId = createAndGetId("/api/units", "{\"symbol\":\"cxa\",\"description\":\"Caixa\"}");
+        int productId = createAndGetId("/api/products", "{\"name\":\"Ovo\",\"unitId\":" + unitId + "}");
+        int delivered = createAndGetId("/api/suppliers", "{\"legalName\":\"Zeta Granja\",\"cnpj\":\"22.222.222/0001-22\"}");
+        int alsoDelivered = createAndGetId("/api/suppliers", "{\"legalName\":\"Alfa Aves\",\"cnpj\":\"33.333.333/0001-33\"}");
+        int neverDelivered = createAndGetId("/api/suppliers", "{\"legalName\":\"Sem Entrega\",\"cnpj\":\"44.444.444/0001-44\"}");
+        int inactive = createAndGetId("/api/suppliers", "{\"legalName\":\"Inativo\",\"cnpj\":\"55.555.555/0001-55\"}");
+        batchOf(productId, delivered, "E1", 3, "2099-01-01");
+        batchOf(productId, delivered, "E2", 3, "2099-01-01");
+        batchOf(productId, alsoDelivered, "E3", 3, "2099-01-01");
+        batchOf(productId, inactive, "E4", 3, "2099-01-01");
+        send(patch("/api/suppliers/" + inactive + "/deactivate"), null).andExpect(status().isNoContent());
+
+        // sem filtro continua devolvendo todos os ativos
+        send(get("/api/suppliers"), null)
+                .andExpect(jsonPath("$[?(@.id == " + neverDelivered + ")]").exists());
+        // com kitchenId: só quem tem lote na cozinha, sem repetir, ordenado por razão social
+        send(get("/api/suppliers").param("kitchenId", String.valueOf(kitchen.getId())), null)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].legalName").value("Alfa Aves"))
+                .andExpect(jsonPath("$[1].legalName").value("Zeta Granja"));
+    }
+
+    @Test
+    void supplierListOfAnotherKitchenIsForbidden() throws Exception {
+        Kitchen other = kitchenRepository.saveAndFlush(Kitchen.builder()
+                .name("Outra").code("O-" + UUID.randomUUID().toString().substring(0, 8)).build());
+
+        send(get("/api/suppliers").param("kitchenId", String.valueOf(other.getId())), null)
+                .andExpect(status().isForbidden());
+    }
+
     // ===== Alertas =====
 
     @Test

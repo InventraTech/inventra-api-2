@@ -44,7 +44,9 @@ public class StockBatchController {
     public ResponseEntity<List<StockBatchResponse>> list(@RequestParam(required = false) Integer kitchenId,
                                                            @RequestParam(required = false) Integer productId) {
         List<StockBatch> batches;
-        if (kitchenId != null) {
+        if (kitchenId != null && productId != null) {
+            batches = useCase.listByKitchenAndProduct(kitchenId, productId);
+        } else if (kitchenId != null) {
             batches = useCase.listByKitchen(kitchenId);
         } else if (productId != null) {
             batches = useCase.listByProduct(productId);
