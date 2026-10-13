@@ -131,10 +131,11 @@ public class InventoryService implements InventoryUseCase {
             stockBatchUseCase.adjust(count.getBatch().getId(), count.getPhysicalQuantity());
         }
 
-        inventory.setStatus(InventoryStatus.CLOSED);
-        inventory.setClosedAt(LocalDateTime.now());
+        // sp_close_inventory muda o status para CLOSED e preenche closed_at
+        repository.callCloseInventory(inventory.getId());
 
-        return repository.save(inventory);
+        return repository.findById(inventoryId)
+            .orElseThrow(() -> new ResourceNotFoundException("Inventário não encontrado."));
     }
 
     @Override

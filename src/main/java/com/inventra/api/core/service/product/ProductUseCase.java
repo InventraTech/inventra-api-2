@@ -23,6 +23,10 @@ public interface ProductUseCase {
 
     Product update(Integer id, UpdateProductRequest request);
 
+    Product updatePhoto(Integer id, byte[] content);
+
+    Product removePhoto(Integer id);
+
     void activate(Integer id);
 
     void deactivate(Integer id);

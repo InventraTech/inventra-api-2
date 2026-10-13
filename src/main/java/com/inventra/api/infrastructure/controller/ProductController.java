@@ -1,5 +1,6 @@
 package com.inventra.api.infrastructure.controller;
 
+import java.io.IOException;
 import java.net.URI;
 import java.util.List;
 
@@ -7,6 +8,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.inventra.api.core.domain.product.Product;
 import com.inventra.api.core.service.product.ProductUseCase;
@@ -64,6 +66,19 @@ public class ProductController {
     public ResponseEntity<ProductResponse> update(@PathVariable Integer id,
                                                    @Valid @RequestBody UpdateProductRequest request) {
         Product updated = useCase.update(id, request);
+        return ResponseEntity.ok(ProductResponse.fromEntity(updated));
+    }
+
+    @PutMapping("/{id}/photo")
+    public ResponseEntity<ProductResponse> updatePhoto(@PathVariable Integer id,
+                                                        @RequestParam("file") MultipartFile file) throws IOException {
+        Product updated = useCase.updatePhoto(id, file.getBytes());
+        return ResponseEntity.ok(ProductResponse.fromEntity(updated));
+    }
+
+    @DeleteMapping("/{id}/photo")
+    public ResponseEntity<ProductResponse> removePhoto(@PathVariable Integer id) {
+        Product updated = useCase.removePhoto(id);
         return ResponseEntity.ok(ProductResponse.fromEntity(updated));
     }
 

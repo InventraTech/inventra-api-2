@@ -33,6 +33,22 @@ class ProductRegistrationControllerTest {
     @Autowired private MockMvc mvc;
     @MockitoBean private ProductRegistrationService service;
     private static final String URL = "/api/products/barcode-registrations";
+    @Test void unknownRoutePreserves404() throws Exception {
+        mvc.perform(get("/route-that-does-not-exist"))
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.status").value(404));
+    }
+
+    @Test void unsupportedMethodPreserves405AndAllowHeader() throws Exception {
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put(URL)
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isMethodNotAllowed()).andExpect(jsonPath("$.status").value(405))
+                .andExpect(header().string("Allow", org.hamcrest.Matchers.containsString("POST")));
+    }
+
+    @Test void unsupportedContentTypePreserves415() throws Exception {
+        mvc.perform(post(URL).contentType(MediaType.TEXT_PLAIN).content("invalid"))
+                .andExpect(status().isUnsupportedMediaType()).andExpect(jsonPath("$.status").value(415));
+    }
     private static final String REQUEST = """
             {"name":"Arroz","unitId":1,"barcode":"7891234567890"}
             """;

@@ -26,8 +26,8 @@ class RedisConnectionTest {
                     .withPropertyValues(
                             "spring.data.redis.host=" + getEnv("REDIS_HOST"),
                             "spring.data.redis.port=" + getEnv("REDIS_PORT"),
-                            "spring.data.redis.username=" + getEnv("REDIS_USERNAME"),
-                            "spring.data.redis.password=" + getEnv("REDIS_PASSWORD"),
+                            "spring.data.redis.username=" + optionalEnv("REDIS_USERNAME"),
+                            "spring.data.redis.password=" + optionalEnv("REDIS_PASSWORD"),
                             "spring.data.redis.database=" + System.getenv().getOrDefault("REDIS_DATABASE", "0"),
                             "spring.data.redis.ssl.enabled=" + System.getenv().getOrDefault("REDIS_SSL", "true"),
                             "spring.data.redis.connect-timeout=10s",
@@ -64,5 +64,9 @@ class RedisConnectionTest {
         }
 
         return value;
+    }
+
+    private static String optionalEnv(String name) {
+        return System.getenv().getOrDefault(name, "");
     }
 }

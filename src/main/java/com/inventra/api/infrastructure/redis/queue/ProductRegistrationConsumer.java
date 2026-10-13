@@ -11,6 +11,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.SmartLifecycle;
 import org.springframework.dao.DataAccessException;
+import org.springframework.dao.TransientDataAccessException;
+import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.transaction.CannotCreateTransactionException;
+import tools.jackson.core.JacksonException;
 import org.springframework.stereotype.Component;
 
 import com.inventra.api.core.service.productqueue.ProductRegistrationProcessor;
@@ -22,6 +26,7 @@ import com.inventra.api.infrastructure.exception.ResourceNotFoundException;
 @Component
 public class ProductRegistrationConsumer implements SmartLifecycle {
     private static final Logger log = LoggerFactory.getLogger(ProductRegistrationConsumer.class);
+    private static final int MAX_FAILURES = 5;
     private final RedisProductRegistrationQueue queue;
     private final ProductRegistrationProcessor processor;
     private final boolean enabled;
@@ -74,8 +79,36 @@ public class ProductRegistrationConsumer implements SmartLifecycle {
     }
 
     void process(UUID eventId, String token) {
-        ProductRegistrationJob job = queue.find(eventId).orElseThrow(
-                () -> new QueueServiceException("Payload de cadastro não encontrado."));
+        ProductRegistrationJob job;
+        try {
+            job = queue.find(eventId).orElse(null);
+        } catch (JacksonException ex) {
+            log.error("Payload inválido eventId={}", eventId, ex);
+            quarantine(eventId, token, "INVALID_PAYLOAD");
+            return;
+        }
+        if (job == null) {
+            quarantine(eventId, token, "PAYLOAD_MISSING");
+            return;
+        }
+        if (!eventId.equals(job.eventId()) || job.userId() == null || job.request() == null
+                || job.status() == null || job.submittedAt() == null) {
+            quarantine(eventId, token, "INVALID_PAYLOAD");
+            return;
+        }
+        if (job.status() == ProductRegistrationJob.Status.COMPLETED
+                || job.status() == ProductRegistrationJob.Status.FAILED) {
+            if (!queue.update(job, token)) throw new QueueServiceException("Confirmação não realizada.");
+            return;
+        }
+        if (job.attempts() >= MAX_FAILURES) {
+            if (!queue.update(job.failed("RETRY_LIMIT_EXCEEDED"), token))
+                throw new QueueServiceException("Confirmação não realizada.");
+            return;
+        }
+        if (job.nextAttemptAt() != null && Instant.now().isBefore(job.nextAttemptAt())) {
+            throw new QueueServiceException("Cadastro aguardando próxima tentativa.");
+        }
         ProductRegistrationJob processing = job.processing();
         if (!queue.update(processing, token)) return;
         log.info("Cadastro iniciado eventId={} timestamp={}", eventId, processing.startedAt());
@@ -83,24 +116,35 @@ public class ProductRegistrationConsumer implements SmartLifecycle {
         try {
             result = processing.completed(processor.process(processing));
         } catch (RuntimeException ex) {
-            if (ex instanceof org.springframework.dao.TransientDataAccessException
-                    || ex instanceof org.springframework.dao.DataAccessResourceFailureException
-                    || ex instanceof org.springframework.transaction.CannotCreateTransactionException) {
-                // Sem confirmação terminal: pending preserva a posição FIFO para a próxima tentativa.
-                throw new QueueServiceException("Banco temporariamente indisponível; cadastro permanece pendente.", ex);
+            if (ex instanceof TransientDataAccessException
+                    || ex instanceof DataAccessResourceFailureException
+                    || ex instanceof CannotCreateTransactionException) {
+                var retry = processing.retry();
+                log.warn("Falha transitória eventId={} tentativa={}", eventId, retry.attempts(), ex);
+                if (retry.attempts() < MAX_FAILURES) {
+                    if (!queue.update(retry, token)) throw new QueueServiceException("Lease perdido.", ex);
+                    throw new QueueServiceException("Banco temporariamente indisponível; cadastro permanece pendente.", ex);
+                }
+                result = retry.failed("RETRY_LIMIT_EXCEEDED");
+            } else {
+                if (!(ex instanceof ResourceNotFoundException) && !(ex instanceof BusinessRuleException)) {
+                    log.error("Falha no cadastro eventId={}", eventId, ex);
+                }
+                String code = ex instanceof ResourceNotFoundException ? "REFERENCE_NOT_FOUND"
+                        : ex instanceof BusinessRuleException ? "BUSINESS_RULE"
+                        : ex instanceof DataAccessException ? "DATABASE_ERROR" : "PROCESSING_ERROR";
+                result = processing.failed(code);
             }
-            if (!(ex instanceof ResourceNotFoundException) && !(ex instanceof BusinessRuleException)) {
-                log.error("Falha no cadastro eventId={}", eventId, ex);
-            }
-            String code = ex instanceof ResourceNotFoundException ? "REFERENCE_NOT_FOUND"
-                    : ex instanceof BusinessRuleException ? "BUSINESS_RULE"
-                    : ex instanceof DataAccessException ? "DATABASE_ERROR" : "PROCESSING_ERROR";
-            result = processing.failed(code);
         }
         // Falha de confirmação no Redis não transforma um sucesso no PostgreSQL em DLQ.
         if (!queue.update(result, token)) throw new QueueServiceException("Confirmação de cadastro não realizada.");
         log.info("Cadastro finalizado eventId={} status={} errorCode={} timestamp={}",
                 eventId, result.status(), result.errorCode(), result.finishedAt());
+    }
+
+    private void quarantine(UUID eventId, String token, String code) {
+        if (!queue.quarantine(eventId, token, code)) throw new QueueServiceException("Quarentena não confirmada.");
+        log.error("Job irrecuperável enviado à DLQ eventId={} errorCode={}", eventId, code);
     }
 
     private void renewLease() {

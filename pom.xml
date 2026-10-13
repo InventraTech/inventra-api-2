@@ -5,17 +5,21 @@
 	<parent>
 		<groupId>org.springframework.boot</groupId>
 		<artifactId>spring-boot-starter-parent</artifactId>
-		<version>4.1.0</version>
+		<version>4.1.1</version>
 		<relativePath/>
 	</parent>
 	<groupId>com.inventra</groupId>
-	<artifactId>inventra-api</artifactId>
+	<artifactId>ms-inventra-api</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name>inventra-api</name>
+	<name>ms-inventra-api</name>
 	<description>API do sistema Inventra</description>
 
 	<properties>
 		<java.version>21</java.version>
+		<!-- Correções de segurança apontadas pelo Trivy que o Spring Boot 4.1.1 ainda não traz -->
+		<tomcat.version>11.0.25</tomcat.version>
+		<jackson-bom.version>3.1.7</jackson-bom.version>
+		<jackson-2-bom.version>2.21.7</jackson-2-bom.version>
 	</properties>
 
 	<dependencies>
@@ -79,6 +83,13 @@
 			<groupId>me.paulschwarz</groupId>
 			<artifactId>spring-dotenv</artifactId>
 			<version>5.1.0</version>
+		</dependency>
+
+		<!-- ===== CLOUDINARY ===== -->
+		<dependency>
+			<groupId>com.cloudinary</groupId>
+			<artifactId>cloudinary-http5</artifactId>
+			<version>2.4.0</version>
 		</dependency>
 
 		<dependency>

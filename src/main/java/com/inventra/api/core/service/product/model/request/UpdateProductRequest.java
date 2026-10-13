@@ -5,7 +5,6 @@ public record UpdateProductRequest(
         String brand,
         Integer categoryId,
         Integer unitId,
-        String barcode,
-        String photoUrl
+        String barcode
 ) {
 }

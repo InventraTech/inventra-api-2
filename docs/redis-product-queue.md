@@ -4,11 +4,13 @@
 
 Código de barras já cadastrado é rejeitado no enqueue com HTTP 409. O consumer também verifica a origem do produto: somente o mesmo `eventId`, persistido junto ao produto na transação PostgreSQL (migration V010), pode reutilizar o resultado. Duplicatas concorrentes de outros jobs falham, sem descartar nome/marca em silêncio. Produtos anteriores à migration não têm origem e são tratados como duplicatas; drenar a fila antes de atualizar se houver jobs antigos ainda sem confirmação.
 
-Falhas transitórias de acesso ao banco e de abertura de transação preservam `pending` e são tentadas novamente após a pausa de 3 segundos do consumer. As tentativas continuam enquanto a falha for transitória; para preservar FIFO, pedidos posteriores aguardam. Falhas definitivas seguem para DLQ. Exceções inesperadas e de infraestrutura são registradas com stack trace; os logs devem ter acesso restrito, pois mensagens de drivers podem conter detalhes internos.
+Falhas transitórias de acesso ao banco e de abertura de transação preservam `pending`, com no máximo cinco execuções que falhem por job. As novas tentativas aguardam 15, 30, 60 e 120 segundos; o polling de 3 segundos pode acrescentar atraso. O contador e o horário da próxima tentativa ficam no JSON Redis e sobrevivem à troca de consumer. A quinta falha vira FAILED/RETRY_LIMIT_EXCEEDED e segue para DLQ. Durante a espera os pedidos posteriores aguardam, preservando FIFO. Jobs antigos sem esses campos assumem zero falhas e execução imediata. Falhas de ACK Redis após sucesso não consomem esse limite. Exceções inesperadas e de infraestrutura são registradas com stack trace em logs restritos.
+
+Payload ausente, JSON inválido ou campos estruturais ausentes são irrecuperáveis: seguem imediatamente para quarentena na DLQ, com status FAILED, eventId, código PAYLOAD_MISSING/INVALID_PAYLOAD e até 4 KiB do payload original. O script exige a concessão atual, remove pending e aplica a mesma retenção limitada da DLQ. Os próximos jobs continuam. Indisponibilidade de conexão Redis não é confundida com payload inválido.
 
 A DLQ retém no máximo 1.000 registros (descarta os mais antigos) e expira após 7 dias sem novas falhas. Esse TTL vale para a lista inteira, não para cada registro. Os resultados individuais continuam com TTL de 7 dias.
 
-Testes de Redis real são opt-in: definir `REDIS_INTEGRATION_TESTS=true` e as variáveis `REDIS_*` de uma instância dedicada a testes. Sem ativação explícita são ignorados; não apontar para produção. O workflow reutilizável do CI deve exportar essa variável para executar a integração. Os demais testes usam configurações locais de Redis sem abrir conexões e banco H2.
+Testes de Redis real são opt-in: definir `REDIS_INTEGRATION_TESTS=true` e as variáveis `REDIS_*` de uma instância dedicada a testes. Sem ativação explícita são ignorados; não apontar para produção. O workflow queue-tests.yml executa a suíte com Redis descartável, sem secrets Aiven. Os demais testes usam configurações locais de Redis sem abrir conexões e banco H2.
 
 A API recebe os dados de um produto revisados pelo usuário, enfileira o cadastro no Redis e retorna `202 Accepted`. Um consumer grava o produto no PostgreSQL e disponibiliza o resultado para consulta. O processo usa Redis List, `LPUSH` para entrada e `BRPOP` para saída, conforme a INV2-25.
 
@@ -16,7 +18,7 @@ A API recebe os dados de um produto revisados pelo usuário, enfileira o cadastr
 
 1. Ler o código de barras. O endpoint existente `GET /api/products/barcode-lookup?barcode=...` pode auxiliar no preenchimento com Open Food Facts.
 2. Solicitar que o usuário revise nome, marca, categoria e unidade. Código de barras não informa lote, quantidade disponível ou validade.
-3. Enviar os dados confirmados com um JWT válido:
+3. Enviar os dados confirmados com JWT de ADMIN ou SUPERVISOR. COMPRADOR e ESTOQUISTA recebem 403. A mesma regra protege POST /api/products e POST /api/products/barcode-registrations:
 
 ```http
 POST /api/products/barcode-registrations
@@ -44,7 +46,11 @@ Authorization: Bearer <token>
 
 Apenas o usuário que enviou o pedido pode consultar seu resultado. Os estados são `QUEUED`, `PROCESSING`, `COMPLETED` e `FAILED`. Quando concluído, `productId` identifica o produto no endpoint existente `GET /api/products/{id}`. Em falha, `errorCode` é `REFERENCE_NOT_FOUND`, `BUSINESS_RULE`, `DATABASE_ERROR` ou `PROCESSING_ERROR`. Falhas de conexão Redis e falhas internas do protocolo da fila retornam `503` sem afirmar que o pedido foi aceito.
 
-O cadastro cria o produto, seguindo as regras existentes de `ProductService`. Entrada de estoque e cadastro de lotes continuam sendo operações próprias. Um código de barras já cadastrado retorna o ID existente, sem modificar seus dados; isso também permite retomar um evento cujo commit no PostgreSQL ocorreu antes de uma queda do consumer.
+O cadastro cria o produto, seguindo as regras existentes de `ProductService`. Entrada de estoque e cadastro de lotes continuam sendo operações próprias. O reuso do ID é permitido somente para retomadas do mesmo evento.
+
+A checagem existsByBarcode no enqueue não é uma reserva atômica: dois pedidos concorrentes podem receber 202 antes do primeiro cadastro. No processamento, o segundo evento termina FAILED/BUSINESS_RULE se o primeiro já gravou; a restrição única do PostgreSQL também impede duplicação numa disputa com o cadastro síncrono (DATABASE_ERROR).
+
+Se o commit PostgreSQL ocorrer e o ACK Redis falhar, o retry consulta registration_event_id antes de barcode, preservando o resultado mesmo após editar o código de barras. Se o produto for fisicamente excluído, essa marca também desaparece: o retry pode recriar o produto ou falhar se o barcode tiver sido reutilizado por outro evento. Esta PR não mantém histórico durável de produtos excluídos; evitar exclusões físicas enquanto houver jobs sem confirmação. A persistência adicional planejada no INV2-26 não está incluída nesta correção isolada.
 
 ## Estruturas Redis e recuperação
 
@@ -86,13 +92,13 @@ Reiniciar apenas a API não remove as chaves Redis. Sobreviver a reinícios ou p
 
 ## Testes e evidências
 
-Usar Java 21 e fornecer as variáveis Redis ao processo Maven, inclusive localmente. O teste de conectividade existente também exige essas variáveis no ambiente, não somente no arquivo `.env`.
+Usar Java 21. A suíte padrão não precisa de credenciais Redis: os testes reais ficam desativados. Para ativá-los, fornecer REDIS_INTEGRATION_TESTS=true e as variáveis Redis de uma instância dedicada ao processo Maven, não somente ao arquivo .env.
 
 ```bash
 ./mvnw -B -ntp test
 ```
 
-No Windows, usar `mvnw.cmd` ou a instalação Maven já disponível. O CI reutilizável existente já fornece os secrets Redis; esta tarefa não exige novos secrets.
+No Windows, usar `mvnw.cmd` ou a instalação Maven já disponível. O workflow queue-tests.yml usa um serviço Redis de teste; o CI/deploy compartilhado continua dependendo de suas configurações próprias.
 
 Se a execução Java no Windows apresentar `Unable to establish loopback connection` em `UnixDomainSockets`, foi validado o fallback TCP somente no comando de testes: `-DargLine=-Djdk.net.unixdomain.tmpdir=target/java-nio-tcp`, indicando um diretório inexistente. Não é necessário alterar a configuração da aplicação nem usar esse ajuste no CI Linux.
 
@@ -109,7 +115,9 @@ Se a execução Java no Windows apresentar `Unable to establish loopback connect
 
 Os testes Redis usam prefixos `inventra:test:product-queue:<UUID>` e removem apenas suas próprias chaves. O processamento relacional dos testes usa H2, sem alterar o PostgreSQL compartilhado. Os relatórios Maven ficam em `target/surefire-reports`.
 
-O Redis da Aiven configurado no `.env` foi validado em 01/10/2026: conexão autenticada, fila FIFO, recuperação, DLQ e suíte completa executaram com sucesso. O `.env` real não é versionado nem alterado pelos testes.
+Uma checagem DNS em 06/10/2026 resolveu o host Aiven citado na review. Isso não comprova autenticação/TLS nem os valores dos secrets de CI/deploy. O .env real não é versionado nem alterado pelos testes.
+
+V010__product_registration_event.sql substitui os nomes V2 e V4 usados anteriormente nesta PR. A V2 histórica remove_user_role_column da Aiven permanece intacta; não executar Flyway repair nem editar seu checksum. O teste ProductRegistrationMigrationTest simula uma V2 externa e aplica V010 usando H2; não equivale a validar o banco compartilhado. Um ambiente de desenvolvimento que já aplicou uma versão anterior desta migration precisa de reconciliação específica de histórico antes da atualização.
 
 Referências técnicas: [LPUSH](https://redis.io/docs/latest/commands/lpush/), [BRPOP](https://redis.io/docs/latest/commands/brpop/) e [scripts no Spring Data Redis](https://docs.spring.io/spring-data/redis/reference/redis/scripting.html).
 
@@ -117,7 +125,7 @@ Referências técnicas: [LPUSH](https://redis.io/docs/latest/commands/lpush/), [
 
 Branch: `feat/fila-processamento-redis`.
 
-Commit sugerido: `feat(redis): implementa fila de cadastro por codigo de barras`.
+Commit sugerido: `fix(redis): corrige migration, autorizacao e recuperacao da fila`.
 
 Título da PR: `INV2-25: Implementar fila de processamento com Redis`.
 

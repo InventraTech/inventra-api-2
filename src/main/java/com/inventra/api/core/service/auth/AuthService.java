@@ -13,7 +13,6 @@ import com.inventra.api.core.service.auth.model.response.LoginResponse;
 import com.inventra.api.core.service.user.UserUseCase;
 import com.inventra.api.core.service.user.model.request.CreateUserRequest;
 import com.inventra.api.core.service.user.model.response.UserResponse;
-import com.inventra.api.infrastructure.exception.ResourceNotFoundException;
 import com.inventra.api.infrastructure.repository.ProfileRepository;
 import com.inventra.api.infrastructure.security.JwtService;
 import com.inventra.api.infrastructure.security.UserPrincipal;
@@ -45,10 +44,14 @@ public class AuthService implements AuthUseCase {
 
     @Override
     public LoginResponse register(RegisterRequest request) {
+        // O enum AccessType define quais perfis são permitidos no auto-cadastro; a linha em tb_profile
+        // (necessária porque tb_user.id_profile é NOT NULL) é criada no primeiro uso, se ainda não existir.
         String profileCode = request.accessType().toProfileCode();
         Profile profile = profileRepository.findByAccessType(profileCode)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Perfil de acesso não encontrado: " + profileCode));
+                .orElseGet(() -> profileRepository.save(Profile.builder()
+                        .accessType(profileCode)
+                        .description("Criado automaticamente pelo auto-cadastro")
+                        .build()));
 
         User user = userUseCase.create(new CreateUserRequest(
                 request.name(),

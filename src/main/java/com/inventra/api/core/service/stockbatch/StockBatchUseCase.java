@@ -11,7 +11,11 @@ public interface StockBatchUseCase {
 
     StockBatch registerEntry(RegisterStockEntryRequest request);
 
+    // chama sp_write_off_stock
     StockBatch consume(Integer batchId, BigDecimal quantity);
+
+    // chama sp_register_stock_entry: soma quantity ao saldo de um lote existente e o reativa
+    StockBatch restock(Integer batchId, BigDecimal quantity);
 
     // baixa por FEFO (lote mais próximo do vencimento primeiro) — usado pelo fluxo de aprovação de requisição
     void consumeForProduct(Integer kitchenId, Integer productId, BigDecimal quantity);

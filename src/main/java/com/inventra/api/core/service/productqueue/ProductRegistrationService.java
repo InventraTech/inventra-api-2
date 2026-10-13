@@ -1,6 +1,8 @@
 package com.inventra.api.core.service.productqueue;
 
 import java.util.UUID;
+import com.inventra.api.infrastructure.repository.ProductRepository;
+import com.inventra.api.infrastructure.exception.BusinessRuleException;
 
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
@@ -19,11 +21,11 @@ import lombok.RequiredArgsConstructor;
 public class ProductRegistrationService {
     private final RedisProductRegistrationQueue queue;
     private final KitchenAccessGuard accessGuard;
-    private final com.inventra.api.infrastructure.repository.ProductRepository products;
+    private final ProductRepository products;
 
     public ProductRegistrationResponse enqueue(BarcodeRegistrationRequest request) {
         if (products.existsByBarcode(request.barcode())) {
-            throw new com.inventra.api.infrastructure.exception.BusinessRuleException("Código de barras já cadastrado.");
+            throw new BusinessRuleException("Código de barras já cadastrado.");
         }
         ProductRegistrationJob job = ProductRegistrationJob.queued(accessGuard.currentUser().getId(), request);
         queue.enqueue(job);

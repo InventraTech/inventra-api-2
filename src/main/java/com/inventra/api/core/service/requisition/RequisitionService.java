@@ -1,7 +1,6 @@
 package com.inventra.api.core.service.requisition;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -127,31 +126,39 @@ public class RequisitionService implements RequisitionUseCase {
     @Transactional
     public Requisition approve(Integer requisitionId, UUID approverId) {
         Requisition requisition = findEditableRequisition(requisitionId);
-        User approver = userRepository.findById(approverId)
-            .orElseThrow(() -> new ResourceNotFoundException("Usuário aprovador não encontrado."));
+        Integer kitchenId = requisition.getKitchen().getId();
+        if (!userRepository.existsById(approverId)) {
+            throw new ResourceNotFoundException("Usuário aprovador não encontrado.");
+        }
 
-        requisition.setStatus(RequisitionStatus.APPROVED);
-        requisition.setApprover(approver);
-        requisition.setApprovedAt(LocalDateTime.now());
-        Requisition saved = repository.save(requisition);
+        // sp_approve_requisition muda status/aprovador; o trigger trg_requisition_approval preenche approved_at
+        repository.callApproveRequisition(requisitionId, approverId);
 
         List<RequisitionItem> items = itemRepository.findByRequisitionId(requisitionId);
         for (RequisitionItem item : items) {
-            stockBatchUseCase.consumeForProduct(
-                requisition.getKitchen().getId(), item.getProduct().getId(), item.getQuantity());
+            stockBatchUseCase.consumeForProduct(kitchenId, item.getProduct().getId(), item.getQuantity());
         }
 
-        return saved;
+        return reload(requisitionId);
     }
 
     @Override
+    @Transactional
     public Requisition reject(Integer requisitionId, String reason) {
-        Requisition requisition = findEditableRequisition(requisitionId);
+        findEditableRequisition(requisitionId);
 
-        requisition.setStatus(RequisitionStatus.REJECTED);
-        requisition.setReason(reason);
+        repository.callRejectRequisition(requisitionId, accessGuard.currentUser().getId(), reason);
+        return reload(requisitionId);
+    }
 
-        return repository.save(requisition);
+    @Override
+    @Transactional
+    public Requisition cancel(Integer requisitionId, String reason) {
+        loadRequisition(requisitionId);
+
+        // sp_cancel_requisition aceita UNDER_REVIEW ou APPROVED; não devolve ao estoque o que a aprovação consumiu
+        repository.callCancelRequisition(requisitionId, reason);
+        return reload(requisitionId);
     }
 
     @Override
@@ -195,6 +202,11 @@ public class RequisitionService implements RequisitionUseCase {
             .orElseThrow(() -> new ResourceNotFoundException("Requisição não encontrada."));
         accessGuard.assertAccess(requisition.getKitchen().getId());
         return requisition;
+    }
+
+    private Requisition reload(Integer requisitionId) {
+        return repository.findById(requisitionId)
+            .orElseThrow(() -> new ResourceNotFoundException("Requisição não encontrada."));
     }
 
     private Requisition findEditableRequisition(Integer requisitionId) {

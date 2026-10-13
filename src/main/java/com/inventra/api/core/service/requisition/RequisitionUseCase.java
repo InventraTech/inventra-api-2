@@ -21,10 +21,14 @@ public interface RequisitionUseCase {
 
     Requisition submit(Integer requisitionId);
 
-    // define approver, approvedAt, e dispara baixa de estoque via StockBatchUseCase
+    // chama sp_approve_requisition e dispara baixa de estoque via StockBatchUseCase
     Requisition approve(Integer requisitionId, UUID approverId);
 
+    // chama sp_reject_requisition, com o usuário logado como aprovador
     Requisition reject(Integer requisitionId, String reason);
+
+    // chama sp_cancel_requisition
+    Requisition cancel(Integer requisitionId, String reason);
 
     List<Requisition> listByKitchen(Integer kitchenId);
 

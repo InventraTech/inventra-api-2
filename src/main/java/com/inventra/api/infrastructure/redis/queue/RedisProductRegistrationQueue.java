@@ -22,6 +22,7 @@ public class RedisProductRegistrationQueue {
     private static final DefaultRedisScript<Long> ENQUEUE = script("enqueue");
     private static final DefaultRedisScript<Long> RECOVER = script("recover");
     private static final DefaultRedisScript<Long> UPDATE = script("update");
+    private static final DefaultRedisScript<Long> QUARANTINE = script("quarantine");
     private static final DefaultRedisScript<Long> LEASE_SCRIPT = script("lease");
 
     private final StringRedisTemplate redis;
@@ -83,6 +84,12 @@ public class RedisProductRegistrationQueue {
                 List.of(key("consumer-lock"), jobKey(job.eventId()), key("pending"), key("errors")),
                 token, job.eventId().toString(), mapper.writeValueAsString(job),
                 terminal ? "1" : "0", job.status() == ProductRegistrationJob.Status.FAILED ? "1" : "0"));
+    }
+
+    public boolean quarantine(UUID eventId, String token, String code) {
+        return Long.valueOf(1).equals(redis.execute(QUARANTINE,
+                List.of(key("consumer-lock"), jobKey(eventId), key("pending"), key("errors")),
+                token, eventId.toString(), code));
     }
 
     private String jobKey(UUID eventId) { return key("job:" + eventId); }

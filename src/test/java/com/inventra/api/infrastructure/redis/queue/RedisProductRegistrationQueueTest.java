@@ -32,6 +32,7 @@ import com.inventra.api.infrastructure.exception.QueueServiceException;
 import tools.jackson.databind.json.JsonMapper;
 
 @ExtendWith(OutputCaptureExtension.class)
+@org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable(named = "REDIS_INTEGRATION_TESTS", matches = "(?i)true")
 class RedisProductRegistrationQueueTest {
     private static LettuceConnectionFactory factory;
     private static StringRedisTemplate redis;
@@ -47,8 +48,10 @@ class RedisProductRegistrationQueueTest {
                 "Configure REDIS_HOST e REDIS_PORT para testes de integração.");
         var server = new RedisStandaloneConfiguration(System.getenv("REDIS_HOST"),
                 Integer.parseInt(System.getenv("REDIS_PORT")));
-        server.setUsername(System.getenv("REDIS_USERNAME"));
-        server.setPassword(System.getenv("REDIS_PASSWORD"));
+        String username = System.getenv("REDIS_USERNAME");
+        String password = System.getenv("REDIS_PASSWORD");
+        if (username != null && !username.isBlank()) server.setUsername(username);
+        if (password != null && !password.isBlank()) server.setPassword(password);
         server.setDatabase(Integer.parseInt(System.getenv().getOrDefault("REDIS_DATABASE", "0")));
         var client = LettuceClientConfiguration.builder().commandTimeout(Duration.ofSeconds(10));
         if (Boolean.parseBoolean(System.getenv().getOrDefault("REDIS_SSL", "true"))) client.useSsl();
@@ -236,6 +239,35 @@ class RedisProductRegistrationQueueTest {
     private static ProductRegistrationJob job(String barcode) {
         return ProductRegistrationJob.queued(UUID.randomUUID(),
                 new BarcodeRegistrationRequest("Arroz", "Inventra", null, 1, barcode, null));
+    }
+
+    @Test void poisonMessagesLeavePendingAndAllowNextJobToComplete() {
+        var missing = job("7891234567801");
+        var corrupt = job("7891234567802");
+        var healthy = job("7891234567803");
+        List.of(missing, corrupt, healthy).forEach(queue::enqueue);
+        redis.delete(prefix + ":job:" + missing.eventId());
+        redis.opsForValue().set(prefix + ":job:" + corrupt.eventId(), "{");
+        assertThat(queue.acquire(token)).isTrue();
+        queue.recover(token);
+        var processor = mock(ProductRegistrationProcessor.class);
+        when(processor.process(any())).thenReturn(321);
+        var consumer = new ProductRegistrationConsumer(queue, processor, false);
+        for (int i = 0; i < 3; i++) consumer.process(queue.take(token), token);
+        assertThat(queue.find(healthy.eventId()).orElseThrow().productId()).isEqualTo(321);
+        assertThat(redis.opsForZSet().size(prefix + ":pending")).isZero();
+        assertThat(redis.opsForList().range(prefix + ":errors", 0, -1)).hasSize(2);
+        assertThat(redis.getExpire(prefix + ":errors")).isBetween(1L, 604800L);
+    }
+
+    @Test void quarantineIsFencedAndIdempotent() {
+        var job = job("7891234567804");
+        queue.enqueue(job);
+        assertThat(queue.acquire(token)).isTrue();
+        assertThat(queue.quarantine(job.eventId(), "stale-owner", "INVALID_PAYLOAD")).isFalse();
+        assertThat(queue.quarantine(job.eventId(), token, "INVALID_PAYLOAD")).isTrue();
+        assertThat(queue.quarantine(job.eventId(), token, "INVALID_PAYLOAD")).isFalse();
+        assertThat(redis.opsForList().size(prefix + ":errors")).isEqualTo(1);
     }
 
     @Test void deadLetterHasBoundedSizeAndInactivityExpiry() {

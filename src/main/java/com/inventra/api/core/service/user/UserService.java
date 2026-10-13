@@ -11,7 +11,6 @@ import com.inventra.api.core.service.user.model.request.ChangePasswordRequest;
 import com.inventra.api.core.service.user.model.request.CreateUserRequest;
 import com.inventra.api.core.service.user.model.request.UpdateUserRequest;
 import com.inventra.api.core.domain.kitchen.Kitchen;
-import com.inventra.api.core.domain.profile.AccessType;
 import com.inventra.api.core.domain.profile.Profile;
 import com.inventra.api.core.domain.user.User;
 import com.inventra.api.infrastructure.exception.BusinessRuleException;
@@ -45,8 +44,6 @@ public class UserService implements UserUseCase {
             kitchen = kitchenRepository.findById(request.kitchenId())
                 .orElseThrow(() -> new ResourceNotFoundException("Cozinha não encontrada."));
         }
-
-        ensureSingleSupervisorPerKitchen(kitchen, profile, null);
 
         User user = User.builder()
             .id(UUID.randomUUID())
@@ -97,18 +94,7 @@ public class UserService implements UserUseCase {
             currentUser.setProfile(profile);
         }
 
-        ensureSingleSupervisorPerKitchen(currentUser.getKitchen(), currentUser.getProfile(), currentUser.getId());
-
         return repository.save(currentUser);
-    }
-
-    private void ensureSingleSupervisorPerKitchen(Kitchen kitchen, Profile profile, UUID excludeUserId) {
-        if (kitchen == null || profile == null || !AccessType.isSupervisor(profile.getAccessType())) {
-            return;
-        }
-        if (repository.existsByKitchenAndAccessType(kitchen.getId(), AccessType.SUPERVISOR.toProfileCode(), excludeUserId)) {
-            throw new BusinessRuleException("Já existe um supervisor cadastrado para essa cozinha.");
-        }
     }
 
     @Override

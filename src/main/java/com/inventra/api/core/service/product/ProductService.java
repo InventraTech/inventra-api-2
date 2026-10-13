@@ -8,6 +8,9 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
+import com.inventra.api.core.service.image.ImageStorage;
+import com.inventra.api.core.service.image.ImageValidator;
+import com.inventra.api.core.service.image.StoredImage;
 import com.inventra.api.core.service.product.model.request.CreateProductRequest;
 import com.inventra.api.core.service.product.model.request.LinkSupplierRequest;
 import com.inventra.api.core.service.product.model.request.SetKitchenParametersRequest;
@@ -41,6 +44,8 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class ProductService implements ProductUseCase {
 
+    private static final String PHOTO_PUBLIC_ID_PREFIX = "inventra/products/";
+
     private final ProductRepository repository;
     private final CategoryRepository categoryRepository;
     private final UnitRepository unitRepository;
@@ -50,6 +55,8 @@ public class ProductService implements ProductUseCase {
     private final KitchenRepository kitchenRepository;
     private final StockBatchRepository stockBatchRepository;
     private final KitchenAccessGuard accessGuard;
+    private final ImageStorage imageStorage;
+    private final ImageValidator imageValidator;
 
     @Override
     public Product create(CreateProductRequest request) {
@@ -116,10 +123,26 @@ public class ProductService implements ProductUseCase {
             }
             product.setBarcode(request.barcode());
         }
-        if (request.photoUrl() != null) {
-            product.setPhotoUrl(request.photoUrl());
-        }
 
+        return repository.save(product);
+    }
+
+    @Override
+    public Product updatePhoto(Integer id, byte[] content) {
+        imageValidator.validate(content);
+        Product product = findById(id);
+
+        StoredImage image = imageStorage.upload(content, PHOTO_PUBLIC_ID_PREFIX + id);
+        product.setPhotoUrl(image.url());
+        return repository.save(product);
+    }
+
+    @Override
+    public Product removePhoto(Integer id) {
+        Product product = findById(id);
+
+        imageStorage.delete(PHOTO_PUBLIC_ID_PREFIX + id);
+        product.setPhotoUrl(null);
         return repository.save(product);
     }
 

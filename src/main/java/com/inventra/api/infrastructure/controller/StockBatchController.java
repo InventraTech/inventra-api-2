@@ -11,6 +11,7 @@ import com.inventra.api.core.service.stockbatch.StockBatchUseCase;
 import com.inventra.api.core.service.stockbatch.model.request.AdjustStockRequest;
 import com.inventra.api.core.service.stockbatch.model.request.ConsumeStockRequest;
 import com.inventra.api.core.service.stockbatch.model.request.RegisterStockEntryRequest;
+import com.inventra.api.core.service.stockbatch.model.request.RestockRequest;
 import com.inventra.api.core.service.stockbatch.model.response.LowStockAlertResponse;
 import com.inventra.api.core.service.stockbatch.model.response.StockBatchResponse;
 
@@ -67,6 +68,13 @@ public class StockBatchController {
     public ResponseEntity<StockBatchResponse> consume(@PathVariable Integer id,
                                                        @Valid @RequestBody ConsumeStockRequest request) {
         StockBatch batch = useCase.consume(id, request.quantity());
+        return ResponseEntity.ok(StockBatchResponse.fromEntity(batch));
+    }
+
+    @PatchMapping("/{id}/restock")
+    public ResponseEntity<StockBatchResponse> restock(@PathVariable Integer id,
+                                                       @Valid @RequestBody RestockRequest request) {
+        StockBatch batch = useCase.restock(id, request.quantity());
         return ResponseEntity.ok(StockBatchResponse.fromEntity(batch));
     }
 

@@ -22,14 +22,4 @@ public interface UserRepository extends JpaRepository<User, UUID> {
             """)
     Optional<User> findByEmailWithProfile(@Param("email") String email);
 
-    @Query("""
-            SELECT COUNT(u) > 0 FROM User u
-            WHERE u.kitchen.id = :kitchenId
-              AND LOWER(u.profile.accessType) = LOWER(:accessType)
-              AND (:excludeUserId IS NULL OR u.id <> :excludeUserId)
-            """)
-    boolean existsByKitchenAndAccessType(@Param("kitchenId") Integer kitchenId,
-                                         @Param("accessType") String accessType,
-                                         @Param("excludeUserId") UUID excludeUserId);
-
 }

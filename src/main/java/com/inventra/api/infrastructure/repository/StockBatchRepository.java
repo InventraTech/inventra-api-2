@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -28,5 +29,15 @@ public interface StockBatchRepository extends JpaRepository<StockBatch, Integer>
             WHERE sb.product.id = :productId AND sb.kitchen.id = :kitchenId AND sb.status = 'ACTIVE'
             """)
     BigDecimal sumActiveQuantity(@Param("productId") Integer productId, @Param("kitchenId") Integer kitchenId);
+
+    // Procedures criadas em V3__business_rules.sql. O trigger trg_update_batch_status marca o lote
+    // como WRITTEN_OFF quando o saldo zera.
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(value = "CALL sp_register_stock_entry(:batchId, :quantity)", nativeQuery = true)
+    void callRegisterStockEntry(@Param("batchId") Integer batchId, @Param("quantity") BigDecimal quantity);
+
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(value = "CALL sp_write_off_stock(:batchId, :quantity)", nativeQuery = true)
+    void callWriteOffStock(@Param("batchId") Integer batchId, @Param("quantity") BigDecimal quantity);
 
 }

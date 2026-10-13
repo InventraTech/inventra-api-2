@@ -12,6 +12,7 @@ import com.inventra.api.core.domain.requisition.enums.RequisitionStatus;
 import com.inventra.api.core.service.requisition.RequisitionUseCase;
 import com.inventra.api.core.service.requisition.model.request.AddRequisitionItemRequest;
 import com.inventra.api.core.service.requisition.model.request.ApproveRequisitionRequest;
+import com.inventra.api.core.service.requisition.model.request.CancelRequisitionRequest;
 import com.inventra.api.core.service.requisition.model.request.CreateRequisitionRequest;
 import com.inventra.api.core.service.requisition.model.request.RejectRequisitionRequest;
 import com.inventra.api.core.service.requisition.model.response.RequisitionItemResponse;
@@ -93,5 +94,12 @@ public class RequisitionController {
                                                        @Valid @RequestBody RejectRequisitionRequest request) {
         Requisition rejected = useCase.reject(id, request.reason());
         return ResponseEntity.ok(RequisitionResponse.fromEntity(rejected));
+    }
+
+    @PatchMapping("/{id}/cancel")
+    public ResponseEntity<RequisitionResponse> cancel(@PathVariable Integer id,
+                                                       @Valid @RequestBody CancelRequisitionRequest request) {
+        Requisition cancelled = useCase.cancel(id, request.reason());
+        return ResponseEntity.ok(RequisitionResponse.fromEntity(cancelled));
     }
 }

@@ -70,21 +70,25 @@ public class    StockBatchService implements StockBatchUseCase {
     }
 
     @Override
+    @Transactional
     public StockBatch consume(Integer batchId, BigDecimal quantity) {
-        StockBatch batch = repository.findById(batchId)
-            .orElseThrow(() -> new ResourceNotFoundException("Lote não encontrado."));
-        accessGuard.assertAccess(batch.getKitchen().getId());
+        StockBatch batch = findAccessibleBatch(batchId);
 
         if (quantity.compareTo(batch.getCurrentQuantity()) > 0) {
             throw new BusinessRuleException("Quantidade solicitada maior que o saldo do lote.");
         }
 
-        batch.setCurrentQuantity(batch.getCurrentQuantity().subtract(quantity));
-        if (batch.getCurrentQuantity().compareTo(BigDecimal.ZERO) <= 0) {
-            batch.setStatus(StockBatchStatus.WRITTEN_OFF);
-        }
+        repository.callWriteOffStock(batchId, quantity);
+        return reload(batchId);
+    }
 
-        return repository.save(batch);
+    @Override
+    @Transactional
+    public StockBatch restock(Integer batchId, BigDecimal quantity) {
+        findAccessibleBatch(batchId);
+
+        repository.callRegisterStockEntry(batchId, quantity);
+        return reload(batchId);
     }
 
     @Override
@@ -102,11 +106,9 @@ public class    StockBatchService implements StockBatchUseCase {
             }
 
             BigDecimal taken = batch.getCurrentQuantity().min(remaining);
-            batch.setCurrentQuantity(batch.getCurrentQuantity().subtract(taken));
-            if (batch.getCurrentQuantity().compareTo(BigDecimal.ZERO) <= 0) {
-                batch.setStatus(StockBatchStatus.WRITTEN_OFF);
+            if (taken.compareTo(BigDecimal.ZERO) > 0) {
+                repository.callWriteOffStock(batch.getId(), taken);
             }
-            repository.save(batch);
 
             remaining = remaining.subtract(taken);
         }
@@ -172,5 +174,17 @@ public class    StockBatchService implements StockBatchUseCase {
         return repository.findByProductId(productId).stream()
             .filter(batch -> accessGuard.hasAccess(batch.getKitchen().getId()))
             .toList();
+    }
+
+    private StockBatch findAccessibleBatch(Integer batchId) {
+        StockBatch batch = repository.findById(batchId)
+            .orElseThrow(() -> new ResourceNotFoundException("Lote não encontrado."));
+        accessGuard.assertAccess(batch.getKitchen().getId());
+        return batch;
+    }
+
+    private StockBatch reload(Integer batchId) {
+        return repository.findById(batchId)
+            .orElseThrow(() -> new ResourceNotFoundException("Lote não encontrado."));
     }
 }
