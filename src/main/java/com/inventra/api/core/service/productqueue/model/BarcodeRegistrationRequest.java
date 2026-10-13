@@ -12,7 +12,6 @@ public record BarcodeRegistrationRequest(
         @Size(max = 80) String brand,
         @Positive Integer categoryId,
         @NotNull @Positive Integer unitId,
-        @NotBlank @Pattern(regexp = "[0-9]{8,14}") String barcode,
-        @Size(max = 255) String photoUrl
+        @NotBlank @Pattern(regexp = "[0-9]{8,14}") String barcode
 ) {
 }

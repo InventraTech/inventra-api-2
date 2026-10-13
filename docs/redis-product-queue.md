@@ -30,12 +30,11 @@ Content-Type: application/json
   "brand": "Marca revisada",
   "categoryId": 1,
   "unitId": 1,
-  "barcode": "7891234567890",
-  "photoUrl": null
+  "barcode": "7891234567890"
 }
 ```
 
-`name`, `unitId` e `barcode` são obrigatórios. Nome tem até 150 caracteres, marca até 80 e URL até 255. IDs devem ser positivos; o código aceita de 8 a 14 dígitos. `categoryId`, `brand` e `photoUrl` são opcionais. Unidade e categoria precisam existir no PostgreSQL quando o consumer processar o cadastro.
+`name`, `unitId` e `barcode` são obrigatórios. Nome tem até 150 caracteres e marca até 80. IDs devem ser positivos; o código aceita de 8 a 14 dígitos. `categoryId` e `brand` são opcionais. Unidade e categoria precisam existir no PostgreSQL quando o consumer processar o cadastro. A foto é enviada separadamente pelo endpoint seguro de upload da API de produtos.
 
 A resposta inclui `eventId`, `status: QUEUED`, timestamps e um header `Location`:
 

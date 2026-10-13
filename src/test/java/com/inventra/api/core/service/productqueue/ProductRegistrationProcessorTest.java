@@ -27,7 +27,7 @@ class ProductRegistrationProcessorTest {
     @Test void persistsInRelationalDatabaseAndReplayDoesNotCreateDuplicate() {
         var unit = units.save(Unit.builder().symbol("qtest").description("Unidade para teste da fila").build());
         var job = ProductRegistrationJob.queued(UUID.randomUUID(),
-                new BarcodeRegistrationRequest("Arroz fila", "Inventra", null, unit.getId(), "7891234500001", null));
+                new BarcodeRegistrationRequest("Arroz fila", "Inventra", null, unit.getId(), "7891234500001"));
         Integer firstId = processor.process(job);
         Integer replayId = processor.process(job);
         assertThat(replayId).isEqualTo(firstId);
@@ -47,7 +47,7 @@ class ProductRegistrationProcessorTest {
 
     @Test void invalidReferenceRollsBackWithoutSavingProduct() {
         var job = ProductRegistrationJob.queued(UUID.randomUUID(),
-                new BarcodeRegistrationRequest("Arroz fila", null, null, Integer.MAX_VALUE, "7891234500002", null));
+                new BarcodeRegistrationRequest("Arroz fila", null, null, Integer.MAX_VALUE, "7891234500002"));
         assertThrows(ResourceNotFoundException.class, () -> processor.process(job));
         assertThat(products.findByBarcode(job.request().barcode())).isEmpty();
     }

@@ -15,7 +15,7 @@ import org.springframework.core.io.ClassPathResource;
 class ProductRegistrationMigrationTest {
     @TempDir Path migrations;
 
-    @Test void v4AppliesWithoutReplacingHistoricalV2() throws Exception {
+    @Test void v010AppliesWithoutReplacingHistoricalV2() throws Exception {
         String url = "jdbc:h2:mem:migration_" + UUID.randomUUID() + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1";
         // Histórico sintético: simula a V2 externa sem tocar na Aiven.
         Path historical = migrations.resolve("historical");

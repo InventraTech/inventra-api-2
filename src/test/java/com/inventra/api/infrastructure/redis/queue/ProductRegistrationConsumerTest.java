@@ -20,7 +20,7 @@ class ProductRegistrationConsumerTest {
         var queue = mock(RedisProductRegistrationQueue.class);
         var processor = mock(ProductRegistrationProcessor.class);
         var initial = ProductRegistrationJob.queued(UUID.randomUUID(),
-                new BarcodeRegistrationRequest("Arroz", null, null, 1, "7891234567890", null));
+                new BarcodeRegistrationRequest("Arroz", null, null, 1, "7891234567890"));
         for (int i = 0; i < 4; i++) initial = initial.retry();
         var stored = new java.util.concurrent.atomic.AtomicReference<>(initial.processing());
         var loseAcknowledgement = new java.util.concurrent.atomic.AtomicBoolean(true);
@@ -44,7 +44,7 @@ class ProductRegistrationConsumerTest {
         var queue = mock(RedisProductRegistrationQueue.class);
         var processor = mock(ProductRegistrationProcessor.class);
         var retry = ProductRegistrationJob.queued(UUID.randomUUID(),
-                new BarcodeRegistrationRequest("Arroz", null, null, 1, "7891234567890", null)).retry();
+                new BarcodeRegistrationRequest("Arroz", null, null, 1, "7891234567890")).retry();
         when(queue.find(retry.eventId())).thenReturn(Optional.of(retry));
         assertThrows(QueueServiceException.class,
                 () -> new ProductRegistrationConsumer(queue, processor, false).process(retry.eventId(), "owner"));
@@ -73,7 +73,7 @@ class ProductRegistrationConsumerTest {
         var queue = mock(RedisProductRegistrationQueue.class);
         var processor = mock(ProductRegistrationProcessor.class);
         var stored = new java.util.concurrent.atomic.AtomicReference<>(ProductRegistrationJob.queued(UUID.randomUUID(),
-                new BarcodeRegistrationRequest("Arroz", null, null, 1, "7891234567890", null)));
+                new BarcodeRegistrationRequest("Arroz", null, null, 1, "7891234567890")));
         when(queue.find(any())).thenAnswer(invocation -> Optional.of(stored.get()));
         when(queue.update(any(), eq("owner"))).thenAnswer(invocation -> {
             stored.set(invocation.getArgument(0));
@@ -114,7 +114,7 @@ class ProductRegistrationConsumerTest {
         var queue = mock(RedisProductRegistrationQueue.class);
         var processor = mock(ProductRegistrationProcessor.class);
         var job = ProductRegistrationJob.queued(UUID.randomUUID(),
-                new BarcodeRegistrationRequest("Arroz", null, null, 1, "7891234567890", null));
+                new BarcodeRegistrationRequest("Arroz", null, null, 1, "7891234567890"));
         when(queue.find(job.eventId())).thenReturn(Optional.of(job));
         when(queue.update(any(), eq("owner"))).thenReturn(true);
         when(processor.process(any())).thenThrow(new DataAccessResourceFailureException("offline")).thenReturn(42);

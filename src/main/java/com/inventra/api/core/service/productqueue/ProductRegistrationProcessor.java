@@ -30,7 +30,7 @@ public class ProductRegistrationProcessor {
             throw new BusinessRuleException("Código de barras já cadastrado.");
         }
         var product = productUseCase.create(new CreateProductRequest(request.name(), request.brand(),
-                request.categoryId(), request.unitId(), request.barcode(), request.photoUrl()));
+                request.categoryId(), request.unitId(), request.barcode()));
         product.setRegistrationEventId(job.eventId());
         return repository.save(product).getId();
     }

@@ -34,7 +34,7 @@ class ProductRegistrationServiceTest {
         org.mockito.Mockito.verifyNoInteractions(queue);
     }
     private final UUID userId = UUID.randomUUID();
-    private final BarcodeRegistrationRequest request = new BarcodeRegistrationRequest("Arroz", null, null, 1, "7891234567890", null);
+    private final BarcodeRegistrationRequest request = new BarcodeRegistrationRequest("Arroz", null, null, 1, "7891234567890");
 
     @BeforeEach void authenticate() { when(guard.currentUser()).thenReturn(User.builder().id(userId).build()); }
 

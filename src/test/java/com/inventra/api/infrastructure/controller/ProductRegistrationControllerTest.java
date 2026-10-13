@@ -55,7 +55,7 @@ class ProductRegistrationControllerTest {
 
     @Test void acceptsRegistrationAndProvidesStatusLocation() throws Exception {
         var job = ProductRegistrationJob.queued(UUID.randomUUID(),
-                new BarcodeRegistrationRequest("Arroz", null, null, 1, "7891234567890", null));
+                new BarcodeRegistrationRequest("Arroz", null, null, 1, "7891234567890"));
         when(service.enqueue(any())).thenReturn(ProductRegistrationResponse.from(job));
         mvc.perform(post(URL).contentType(MediaType.APPLICATION_JSON).content(REQUEST))
                 .andExpect(status().isAccepted()).andExpect(header().string("Location", URL + "/" + job.eventId()))
@@ -72,7 +72,7 @@ class ProductRegistrationControllerTest {
 
     @Test void exposesCompletedResult() throws Exception {
         var job = ProductRegistrationJob.queued(UUID.randomUUID(),
-                new BarcodeRegistrationRequest("Arroz", null, null, 1, "7891234567890", null)).processing().completed(12);
+                new BarcodeRegistrationRequest("Arroz", null, null, 1, "7891234567890")).processing().completed(12);
         when(service.find(job.eventId())).thenReturn(ProductRegistrationResponse.from(job));
         mvc.perform(get(URL + "/" + job.eventId())).andExpect(status().isOk())
                 .andExpect(jsonPath("$.productId").value(12)).andExpect(jsonPath("$.status").value("COMPLETED"));

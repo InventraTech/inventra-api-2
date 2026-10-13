@@ -23,8 +23,8 @@ O trabalho não commitado do INV2-26 permanece na pasta original.
 
 ## Estado do merge e infraestrutura
 
-Validação local final em 06/10/2026: BUILD SUCCESS; 84 testes contabilizados,
-71 executados com sucesso, zero falhas/erros e 13 ignorados por dependerem de
+Validação local final em 13/10/2026: BUILD SUCCESS; 440 testes contabilizados,
+427 executados com sucesso, zero falhas/erros e 13 ignorados por dependerem de
 Redis real. Testes incluíram RBAC com JWT, 404/405/415, Flyway com V2 externa
 simulada, retry limitado, backoff, ACK perdido e idempotência após editar barcode.
 Os scripts novos de quarentena ainda precisam da execução do workflow Redis.
@@ -41,9 +41,8 @@ Comando executado (Java 21, REDIS_INTEGRATION_TESTS=false):
 .\mvnw.cmd -B -ntp '-DargLine=-Djdk.net.unixdomain.tmpdir=target/java-nio-tcp' '-Dspring.jpa.show-sql=false' test
 ```
 
-A main 73f7159 foi integrada localmente sem conflitos com `merge --no-commit`.
-O merge ainda precisa do commit: não executar outro pull/rebase antes de concluí-lo.
-As alterações herdadas em pom.xml, cd.yml e health checks são da main.
+A main 754c055 foi integrada e os conflitos foram resolvidos preservando as
+correções da fila e as mudanças mobile, de autenticação e de migrations da main.
 
 O último CI publicado da PR (commit 8b7f2d2) está verde:
 [Build da aplicação](https://github.com/InventraTech/inventra-development-spring-redis-neo4j-2/actions/runs/37043822220/job/110960183364).

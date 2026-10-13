@@ -151,17 +151,19 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
-    public ProblemDetail handleMethodNotSupported(HttpRequestMethodNotSupportedException ex) {
+    public ResponseEntity<ProblemDetail> handleMethodNotSupported(HttpRequestMethodNotSupportedException ex) {
         String detail = "Método " + ex.getMethod() + " não é suportado nesse endpoint.";
         if (ex.getSupportedHttpMethods() != null && !ex.getSupportedHttpMethods().isEmpty()) {
             detail += " Métodos aceitos: " + ex.getSupportedHttpMethods().stream()
                     .map(Object::toString).collect(Collectors.joining(", ")) + ".";
         }
-        return buildProblem(HttpStatus.METHOD_NOT_ALLOWED, "Method Not Allowed", detail);
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
+                .headers(ex.getHeaders())
+                .body(buildProblem(HttpStatus.METHOD_NOT_ALLOWED, "Method Not Allowed", detail));
     }
 
     @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
-    public ProblemDetail handleMediaTypeNotSupported(HttpMediaTypeNotSupportedException ex) {
+    public ResponseEntity<ProblemDetail> handleMediaTypeNotSupported(HttpMediaTypeNotSupportedException ex) {
         String detail = ex.getContentType() == null
                 ? "Content-Type ausente."
                 : "Content-Type '" + ex.getContentType() + "' não suportado.";
@@ -169,7 +171,9 @@ public class GlobalExceptionHandler {
             detail += " Tipos aceitos: " + ex.getSupportedMediaTypes().stream()
                     .map(Object::toString).collect(Collectors.joining(", ")) + ".";
         }
-        return buildProblem(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Unsupported Media Type", detail);
+        return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE)
+                .headers(ex.getHeaders())
+                .body(buildProblem(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Unsupported Media Type", detail));
     }
 
     @ExceptionHandler(NoResourceFoundException.class)
