@@ -12,6 +12,7 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
+import com.google.api.client.http.javanet.NetHttpTransport;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.firebase.FirebaseApp;
 import com.google.firebase.FirebaseOptions;
@@ -64,6 +65,7 @@ public class FirebaseIdentityVerifier implements GoogleIdentityVerifier {
                     ? credentialsJson.getBytes(StandardCharsets.UTF_8)
                     : Base64.getDecoder().decode(credentialsJson);
             FirebaseOptions options = FirebaseOptions.builder()
+                    .setHttpTransport(new NetHttpTransport())
                     .setCredentials(GoogleCredentials.fromStream(new ByteArrayInputStream(json)))
                     .build();
             firebaseAuth = FirebaseAuth.getInstance(FirebaseApp.initializeApp(options, APP_NAME));
