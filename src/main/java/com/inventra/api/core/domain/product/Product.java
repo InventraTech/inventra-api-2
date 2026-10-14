@@ -8,6 +8,7 @@ import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Entity
 @Table(name = "tb_product")
@@ -46,6 +47,9 @@ public class Product {
 
     @Column(name = "barcode", unique = true, length = 50)
     private String barcode;
+
+    @Column(name = "registration_event_id", unique = true)
+    private UUID registrationEventId;
 
     @Column(name = "photo_url", length = 255)
     private String photoUrl;

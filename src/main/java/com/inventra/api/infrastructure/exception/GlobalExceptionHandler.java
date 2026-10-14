@@ -13,12 +13,17 @@ import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.dao.InvalidDataAccessApiUsageException;
 import org.springframework.data.core.PropertyReferenceException;
+import org.springframework.data.redis.RedisConnectionFailureException;
+import org.springframework.data.redis.RedisSystemException;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.DisabledException;
@@ -41,6 +46,7 @@ import tools.jackson.databind.exc.InvalidFormatException;
 import tools.jackson.databind.exc.MismatchedInputException;
 
 @RestControllerAdvice
+@Order(Ordered.HIGHEST_PRECEDENCE)
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
@@ -145,17 +151,19 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
-    public ProblemDetail handleMethodNotSupported(HttpRequestMethodNotSupportedException ex) {
+    public ResponseEntity<ProblemDetail> handleMethodNotSupported(HttpRequestMethodNotSupportedException ex) {
         String detail = "Método " + ex.getMethod() + " não é suportado nesse endpoint.";
         if (ex.getSupportedHttpMethods() != null && !ex.getSupportedHttpMethods().isEmpty()) {
             detail += " Métodos aceitos: " + ex.getSupportedHttpMethods().stream()
                     .map(Object::toString).collect(Collectors.joining(", ")) + ".";
         }
-        return buildProblem(HttpStatus.METHOD_NOT_ALLOWED, "Method Not Allowed", detail);
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
+                .headers(ex.getHeaders())
+                .body(buildProblem(HttpStatus.METHOD_NOT_ALLOWED, "Method Not Allowed", detail));
     }
 
     @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
-    public ProblemDetail handleMediaTypeNotSupported(HttpMediaTypeNotSupportedException ex) {
+    public ResponseEntity<ProblemDetail> handleMediaTypeNotSupported(HttpMediaTypeNotSupportedException ex) {
         String detail = ex.getContentType() == null
                 ? "Content-Type ausente."
                 : "Content-Type '" + ex.getContentType() + "' não suportado.";
@@ -163,7 +171,9 @@ public class GlobalExceptionHandler {
             detail += " Tipos aceitos: " + ex.getSupportedMediaTypes().stream()
                     .map(Object::toString).collect(Collectors.joining(", ")) + ".";
         }
-        return buildProblem(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Unsupported Media Type", detail);
+        return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE)
+                .headers(ex.getHeaders())
+                .body(buildProblem(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Unsupported Media Type", detail));
     }
 
     @ExceptionHandler(NoResourceFoundException.class)
@@ -197,6 +207,20 @@ public class GlobalExceptionHandler {
         return buildProblem(HttpStatus.INTERNAL_SERVER_ERROR, "Internal Server Error", "Erro interno no servidor.");
     }
 
+    @ExceptionHandler({RedisConnectionFailureException.class, RedisSystemException.class})
+    public ProblemDetail handleRedisUnavailable(RuntimeException ex) {
+        log.warn("Redis indisponível errorType={}", ex.getClass().getSimpleName(), ex);
+        return buildProblem(HttpStatus.SERVICE_UNAVAILABLE, "Service Unavailable",
+                "Serviço de processamento indisponível. Tente novamente em instantes.");
+    }
+
+    @ExceptionHandler(QueueServiceException.class)
+    public ProblemDetail handleQueueService(QueueServiceException ex) {
+        log.warn("Falha no serviço de fila errorType={}", ex.getClass().getSimpleName(), ex);
+        return buildProblem(HttpStatus.SERVICE_UNAVAILABLE, "Service Unavailable",
+                "Serviço de processamento indisponível. Tente novamente em instantes.");
+    }
+
     @ExceptionHandler(RestClientException.class)
     public ProblemDetail handleRestClientException(RestClientException ex) {
         log.warn("Falha ao chamar serviço externo", ex);
@@ -218,14 +242,15 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(Exception.class)
-    public ProblemDetail handleGeneric(Exception ex) {
-        // Demais exceções do Spring MVC já sabem o próprio status (4xx): respeita em vez de virar 500.
-        if (ex instanceof ErrorResponse errorResponse && errorResponse.getStatusCode().is4xxClientError()) {
-            HttpStatus status = HttpStatus.valueOf(errorResponse.getStatusCode().value());
-            return buildProblem(status, status.getReasonPhrase(), "Requisição inválida.");
+    public ResponseEntity<ProblemDetail> handleGeneric(Exception ex) {
+        if (ex instanceof ErrorResponse errorResponse) {
+            return ResponseEntity.status(errorResponse.getStatusCode())
+                    .headers(errorResponse.getHeaders())
+                    .body(errorResponse.getBody());
         }
         log.error("Erro não tratado", ex);
-        return buildProblem(HttpStatus.INTERNAL_SERVER_ERROR, "Internal Server Error", "Erro interno no servidor.");
+        return ResponseEntity.internalServerError().body(
+                buildProblem(HttpStatus.INTERNAL_SERVER_ERROR, "Internal Server Error", "Erro interno no servidor."));
     }
 
     private ProblemDetail buildProblem(HttpStatus status, String title, String detail) {
