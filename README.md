@@ -18,7 +18,8 @@ API RESTful em Java + Spring Boot para gestão de estoque, requisições, invent
 - [Rodando](#rodando)
 - [Endpoints](#endpoints)
 - [Estrutura](#estrutura)
-- [Coleção Bruno](#coleção-bruno)
+- [Board no Jira](#board-no-jira)
+- [Demandas de Desenvolvimento 2](#demandas-de-desenvolvimento-2)
 
 ## Stack
 
@@ -169,8 +170,39 @@ src/main/resources/
 └── db/migration/       # Flyway (V001..V009): copia exata de inventra-data-modeling-2/postgre/migrations
 ```
 
-## Coleção Bruno
+## Board no Jira
 
-O diretório [`bruno/`](bruno/) contém uma coleção pronta para o [Bruno](https://www.usebruno.com/), organizada por recurso (`auth`, `users`, `kitchens`, `products`, `stock-batches`, `inventories`, `requisitions`, `alerts`, ...) com environments em `bruno/environments/`.
+O planejamento e o acompanhamento do trabalho ficam no board do projeto **INV2**, com o épico **INV2-4 — Desenvolvimento 2** agrupando todas as demandas desta API:
 
-Basta abrir a pasta no Bruno, escolher um environment, rodar `auth/Login` para popular o token e disparar as demais requisições — o header `Authorization` é preenchido pela variável do environment.
+👉 [Board INV2 no Jira](https://inventraoficial.atlassian.net/jira/software/projects/INV2/boards/81?filter=&groupBy=custom&selectedIssue=INV2-4)
+
+## Demandas de Desenvolvimento 2
+
+Checklist da disciplina e onde cada item foi entregue.
+
+### Mínimo para o 7,0
+
+| Requisito | Ticket | Status | Como foi feito | Onde |
+|:----------|:-------|:-------|:---------------|:-----|
+| API REST em Java com Spring MVC sobre PostgreSQL | [INV2-13](https://inventraoficial.atlassian.net/browse/INV2-13) | ✅ Feito | Projeto Spring Boot com controllers `@RestController` em `/api/*`, banco PostgreSQL versionado com Flyway | `infrastructure/controller/`, `application.properties` |
+| Spring Data JPA integrado ao Postgres | [INV2-14](https://inventraoficial.atlassian.net/browse/INV2-14) | ✅ Feito | Entidades JPA e repositories `JpaRepository`, conexão configurada por variáveis do `.env` | `core/domain/`, `infrastructure/repository/` |
+| CRUD completo via API | [INV2-15](https://inventraoficial.atlassian.net/browse/INV2-15) (+ INV2-181, 183, 184, 185, 186, 187, 188) | ✅ Feito | CRUD de cozinhas, categorias, unidades, fornecedores, produtos, usuários, perfis, lotes, inventários, requisições e alertas, além dos fluxos de negócio (consumo FIFO, contagem de inventário, aprovação de requisição, ciclo de vida da conta) | `core/service/`, `infrastructure/controller/` |
+| Divisão de responsabilidades (padrão MVC em pacotes) | [INV2-13](https://inventraoficial.atlassian.net/browse/INV2-13) | ✅ Feito | `controller` → `service` (UseCase + impl) → `repository` → `domain`, com DTOs separados das entidades | ver [Estrutura](#estrutura) |
+| Validação das entradas | [INV2-16](https://inventraoficial.atlassian.net/browse/INV2-16) | ✅ Feito | Bean Validation (`@Valid`, `@NotBlank`, `@Size`, ...) nos DTOs de request, mais regras de negócio nos services | `core/service/*/` (DTOs) |
+| Tratamento de exceções centralizado | [INV2-17](https://inventraoficial.atlassian.net/browse/INV2-17) | ✅ Feito | `@RestControllerAdvice` converte validação, regra de negócio, recurso inexistente e erro de banco em respostas `application/problem+json` (RFC 7807) com o status HTTP adequado | `infrastructure/exception/GlobalExceptionHandler` |
+
+### Extras
+
+| Requisito | Ticket | Status | Como foi feito | Onde |
+|:----------|:-------|:-------|:---------------|:-----|
+| Swagger / OpenAPI | [INV2-18](https://inventraoficial.atlassian.net/browse/INV2-18) | ✅ Feito | springdoc-openapi com `@Operation` nos endpoints e esquema Bearer para o botão **Authorize** | `/swagger-ui.html`, `/v3/api-docs` |
+| Procedures e Functions da disciplina Modelagem de Dados | [INV2-21](https://inventraoficial.atlassian.net/browse/INV2-21) | ✅ Feito | Procedures `sp_*` vêm da migration de regras de negócio (copiada do repo de modelagem) e são acionadas por `CALL` nativo nos repositories: aprovar/rejeitar/cancelar requisição, baixa e entrada de estoque, fechar inventário, expirar lotes e alertar vencimento (esta última por job diário) | `infrastructure/repository/`, `infrastructure/job/BatchExpirationJob`, `db/migration/` |
+| Autenticação e autorização com Spring Security | [INV2-19](https://inventraoficial.atlassian.net/browse/INV2-19) | ✅ Feito | JWT stateless com refresh token, login com Google, RBAC por papel (`@PreAuthorize`), escopo por cozinha (`KitchenAccessGuard`) e bloqueio por tentativas de login | `infrastructure/security/`, `infrastructure/config/SecurityConfig` |
+| Segunda API REST sobre banco NoSQL | [INV2-20](https://inventraoficial.atlassian.net/browse/INV2-20) | ❌ Não feito (cancelado) | Não foi criada uma segunda API. O mais próximo é o uso de **Redis** *dentro* desta API, como apoio a refresh tokens e pedidos de entrada na cozinha, e não como API REST independente | `infrastructure/redis/` |
+
+### Entregas adicionais (fora do escopo da disciplina)
+
+| Entrega | Ticket | Status |
+|:--------|:-------|:-------|
+| Fotos de produto no Cloudinary | [INV2-195](https://inventraoficial.atlassian.net/browse/INV2-195) | ✅ Feito |
+| Testes unitários para todos os services | [INV2-199](https://inventraoficial.atlassian.net/browse/INV2-199) | ✅ Feito (`src/test/`) |
