@@ -80,6 +80,8 @@ class RankingPostgresRedisIntegrationTest {
                 .getContentAsString(StandardCharsets.UTF_8));
         jdbc.execute(new ClassPathResource("db/migration/V007__stock_movements.sql")
                 .getContentAsString(StandardCharsets.UTF_8));
+        jdbc.execute(new ClassPathResource("db/migration/V010__stock_movement_created_at_default.sql")
+                .getContentAsString(StandardCharsets.UTF_8));
         kitchen = kitchens.save(Kitchen.builder().name("Ranking PG").active(true)
                 .code(UUID.randomUUID().toString().substring(0, 20)).build());
         var profile = profiles.saveAndFlush(Profile.builder()
