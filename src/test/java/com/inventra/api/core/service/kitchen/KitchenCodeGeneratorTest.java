@@ -18,12 +18,15 @@ class KitchenCodeGeneratorTest {
         }
     }
 
+    // Com 32^6 combinações, 2.000 sorteios repetem um código em ~0,2% das execuções (paradoxo do
+    // aniversário), então exigir 100% de códigos distintos deixava o teste instável. Colisão é
+    // tratada no KitchenService, que gera outro código; aqui só garantimos que os códigos variam.
     @Test
-    void codesAreNotRepeatedInAShortSample() {
+    void codesAreAlmostAlwaysDistinct() {
         Set<String> codes = new HashSet<>();
         for (int i = 0; i < 2_000; i++) {
             codes.add(generator.generate());
         }
-        assertThat(codes).hasSize(2_000);
+        assertThat(codes).hasSizeGreaterThanOrEqualTo(1_990);
     }
 }
