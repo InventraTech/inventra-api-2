@@ -49,7 +49,8 @@ public class FirebaseIdentityVerifier implements GoogleIdentityVerifier {
             throw new ApiProblemException(HttpStatus.UNAUTHORIZED, "INVALID_GOOGLE_TOKEN",
                     "Token do Google inválido ou expirado.");
         }
-        return new GoogleIdentity(token.getUid(), token.getEmail(), token.isEmailVerified(), token.getName());
+        return new GoogleIdentity(token.getUid(), token.getEmail(), token.isEmailVerified(), token.getName(),
+                token.getPicture());
     }
 
     // O FirebaseApp é criado uma vez, no primeiro login com Google.

@@ -30,13 +30,14 @@ public record StockMovementResponse(
     public record ProductSummary(Integer id, String name) {
     }
 
-    public record UserSummary(UUID id, String name) {
+    public record UserSummary(UUID id, String name, String photoUrl) {
     }
 
     public static StockMovementResponse fromEntity(StockMovement movement) {
         var batch = movement.getBatch();
         var user = movement.getUser() != null
-                ? new UserSummary(movement.getUser().getId(), movement.getUser().getName())
+                ? new UserSummary(movement.getUser().getId(), movement.getUser().getName(),
+                        movement.getUser().getPhotoUrl())
                 : null;
 
         return new StockMovementResponse(

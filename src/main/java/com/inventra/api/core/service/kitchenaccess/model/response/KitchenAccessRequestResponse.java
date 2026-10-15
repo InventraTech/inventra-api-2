@@ -22,16 +22,16 @@ public record KitchenAccessRequestResponse(
     public record KitchenSummary(Integer id, String name) {
     }
 
-    public record UserSummary(UUID id, String name, String email) {
+    public record UserSummary(UUID id, String name, String email, String photoUrl) {
     }
 
     // expiresAt só faz sentido enquanto o pedido está pendente: depois de decidido ele não expira mais.
-    public static KitchenAccessRequestResponse from(KitchenAccessRequest request, Duration pendingTtl) {
+    public static KitchenAccessRequestResponse from(KitchenAccessRequest request, Duration pendingTtl, String userPhotoUrl) {
         return new KitchenAccessRequestResponse(
                 request.id(),
                 request.status(),
                 new KitchenSummary(request.kitchenId(), request.kitchenName()),
-                new UserSummary(request.userId(), request.userName(), request.userEmail()),
+                new UserSummary(request.userId(), request.userName(), request.userEmail(), userPhotoUrl),
                 request.createdAt(),
                 request.status() == KitchenAccessRequestStatus.PENDING ? request.createdAt().plus(pendingTtl) : null,
                 request.decidedAt(),

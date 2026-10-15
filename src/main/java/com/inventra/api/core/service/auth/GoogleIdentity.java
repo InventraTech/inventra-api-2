@@ -5,6 +5,8 @@ public record GoogleIdentity(
         String uid,
         String email,
         boolean emailVerified,
-        String name
+        String name,
+        // URL da foto da conta Google (claim "picture"); pode vir nula
+        String picture
 ) {
 }

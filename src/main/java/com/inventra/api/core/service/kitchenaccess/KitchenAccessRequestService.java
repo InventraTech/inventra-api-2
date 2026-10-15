@@ -2,8 +2,13 @@ package com.inventra.api.core.service.kitchenaccess;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -54,6 +59,17 @@ public class KitchenAccessRequestService implements KitchenAccessRequestUseCase 
 
     public Duration pendingTtl() {
         return pendingTtl;
+    }
+
+    // O pedido no Redis guarda nome e e-mail de quando foi criado; a foto é lida do banco na hora, para não
+    // mostrar uma foto que o usuário já trocou. Usuário sem foto fica fora do mapa.
+    public Map<UUID, String> userPhotoUrls(Collection<KitchenAccessRequest> requests) {
+        Set<UUID> userIds = requests.stream().map(KitchenAccessRequest::userId).collect(Collectors.toSet());
+        Map<UUID, String> photoUrls = new HashMap<>();
+        userRepository.findAllById(userIds).stream()
+                .filter(user -> user.getPhotoUrl() != null)
+                .forEach(user -> photoUrls.put(user.getId(), user.getPhotoUrl()));
+        return photoUrls;
     }
 
     @Override

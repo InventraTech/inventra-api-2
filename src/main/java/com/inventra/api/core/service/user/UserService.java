@@ -16,6 +16,10 @@ import com.inventra.api.core.service.user.model.request.UpdateUserRequest;
 import com.inventra.api.core.domain.kitchen.Kitchen;
 import com.inventra.api.core.domain.profile.Profile;
 import com.inventra.api.core.domain.user.User;
+import com.inventra.api.core.service.image.ImagePaths;
+import com.inventra.api.core.service.image.ImageStorage;
+import com.inventra.api.core.service.image.ImageValidator;
+import com.inventra.api.core.service.image.StoredImage;
 import com.inventra.api.infrastructure.exception.BusinessRuleException;
 import com.inventra.api.infrastructure.exception.ResourceNotFoundException;
 import com.inventra.api.infrastructure.repository.KitchenRepository;
@@ -33,11 +37,17 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class UserService implements UserUseCase {
 
+    // quadrado de 400px centrado no rosto: o arquivo guardado fica pequeno e padronizado
+    private static final String PROFILE_PHOTO_TRANSFORMATION = "c_fill,g_face,w_400,h_400";
+    private static final int PHOTO_URL_MAX_LENGTH = 255;
+
     private final UserRepository repository;
     private final KitchenRepository kitchenRepository;
     private final ProfileRepository profileRepository;
     private final PasswordEncoder passwordEncoder;
     private final KitchenAccessGuard accessGuard;
+    private final ImageStorage imageStorage;
+    private final ImageValidator imageValidator;
 
     @Override
     public User create(CreateUserRequest request) {
@@ -75,8 +85,13 @@ public class UserService implements UserUseCase {
     }
 
     @Override
-    public User registerWithGoogle(String name, String email, String firebaseUid, Integer profileId) {
-        return save(name, email, null, firebaseUid, null, profileId);
+    public User registerWithGoogle(String name, String email, String firebaseUid, String photoUrl, Integer profileId) {
+        User user = save(name, email, null, firebaseUid, null, profileId);
+        if (photoUrl != null && !photoUrl.isBlank() && photoUrl.length() <= PHOTO_URL_MAX_LENGTH) {
+            user.setPhotoUrl(photoUrl);
+            user = repository.save(user);
+        }
+        return user;
     }
 
     @Override
@@ -91,6 +106,30 @@ public class UserService implements UserUseCase {
     @Override
     public User findCurrent() {
         return load(accessGuard.currentUser().getId());
+    }
+
+    @Override
+    public User updateCurrentPhoto(byte[] content) {
+        imageValidator.validate(content);
+        User user = findCurrent();
+
+        StoredImage image = imageStorage.upload(content, ImagePaths.user(user.getId()), PROFILE_PHOTO_TRANSFORMATION);
+        user.setPhotoUrl(image.url());
+        return repository.save(user);
+    }
+
+    // A foto do Google não está no Cloudinary: só limpa o campo. Com foto enviada, apaga também o arquivo.
+    @Override
+    public User removeCurrentPhoto() {
+        User user = findCurrent();
+        if (user.getPhotoUrl() == null) {
+            return user;
+        }
+        if (!isGooglePhoto(user.getPhotoUrl())) {
+            imageStorage.delete(ImagePaths.user(user.getId()));
+        }
+        user.setPhotoUrl(null);
+        return repository.save(user);
     }
 
     @Override
@@ -195,6 +234,10 @@ public class UserService implements UserUseCase {
             .active(true)
             .build();
         return repository.save(user);
+    }
+
+    private static boolean isGooglePhoto(String photoUrl) {
+        return photoUrl.contains(".googleusercontent.com/");
     }
 
     private User load(UUID id) {

@@ -10,6 +10,8 @@ public record UserResponse(
         UUID id,
         String name,
         String email,
+        // nula = sem foto (o app mostra as iniciais)
+        String photoUrl,
         KitchenSummary kitchen,
         ProfileSummary profile,
         Boolean active,
@@ -34,6 +36,7 @@ public record UserResponse(
                 user.getId(),
                 user.getName(),
                 user.getEmail(),
+                user.getPhotoUrl(),
                 kitchen,
                 profile,
                 user.getActive(),
