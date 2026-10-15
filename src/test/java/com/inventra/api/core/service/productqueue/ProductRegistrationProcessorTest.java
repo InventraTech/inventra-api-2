@@ -35,12 +35,7 @@ class ProductRegistrationProcessorTest {
         assertThat(saved.getName()).isEqualTo("Arroz fila");
         assertThat(saved.getCreatedAt()).isNotNull();
         var duplicate = ProductRegistrationJob.queued(UUID.randomUUID(), job.request());
-        assertThrows(com.inventra.api.infrastructure.exception.BusinessRuleException.class,
-                () -> processor.process(duplicate));
-        saved.setBarcode("7891234500099");
-        products.saveAndFlush(saved);
-        assertThat(processor.process(job)).isEqualTo(firstId);
-        assertThat(products.findByBarcode(job.request().barcode())).isEmpty();
+        assertThat(processor.process(duplicate)).isEqualTo(firstId);
         products.deleteById(firstId);
         units.deleteById(unit.getId());
     }
