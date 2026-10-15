@@ -132,6 +132,22 @@ class MobileFeaturesIntegrationTest {
     }
 
     @Test
+    void googleFirstAccessUsesTheGooglePictureAsProfilePhoto() throws Exception {
+        String email = "lia-" + UUID.randomUUID() + "@gmail.com";
+        String picture = "https://lh3.googleusercontent.com/a/foto-da-lia=s96-c";
+        String idToken = "google|uid-" + UUID.randomUUID() + "|" + email + "|Lia Rocha|" + picture;
+
+        google(idToken, "COMPRADOR")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.user.photoUrl").value(picture));
+        // sem claim "picture": conta sem foto
+        String withoutPicture = "google|uid-" + UUID.randomUUID() + "|outro-" + email + "|Outra Pessoa";
+        google(withoutPicture, "COMPRADOR")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.user.photoUrl").doesNotExist());
+    }
+
+    @Test
     void googleLoginLinksTheExistingAccountWithTheSameEmail() throws Exception {
         User user = newUser("comprador", null);
         String idToken = "google|uid-" + UUID.randomUUID() + "|" + user.getEmail() + "|Outro Nome";

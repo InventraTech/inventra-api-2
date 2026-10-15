@@ -1,5 +1,6 @@
 package com.inventra.api.infrastructure.controller;
 
+import java.io.IOException;
 import java.net.URI;
 import java.util.List;
 import java.util.UUID;
@@ -7,6 +8,7 @@ import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.inventra.api.core.domain.user.User;
 import com.inventra.api.core.service.user.UserUseCase;
@@ -42,6 +44,19 @@ public class UserController {
     @GetMapping("/me")
     public ResponseEntity<UserResponse> me() {
         return ResponseEntity.ok(UserResponse.fromEntity(useCase.findCurrent()));
+    }
+
+    // qualquer usuário autenticado, só a própria foto
+    @Operation(summary = "Envia ou substitui a foto de perfil do usuário logado (Cloudinary)")
+    @PutMapping("/me/photo")
+    public ResponseEntity<UserResponse> updateMyPhoto(@RequestParam("file") MultipartFile file) throws IOException {
+        return ResponseEntity.ok(UserResponse.fromEntity(useCase.updateCurrentPhoto(file.getBytes())));
+    }
+
+    @Operation(summary = "Remove a foto de perfil do usuário logado")
+    @DeleteMapping("/me/photo")
+    public ResponseEntity<UserResponse> removeMyPhoto() {
+        return ResponseEntity.ok(UserResponse.fromEntity(useCase.removeCurrentPhoto()));
     }
 
     @Operation(summary = "Busca um usuário pelo id")

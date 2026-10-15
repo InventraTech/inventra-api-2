@@ -29,7 +29,7 @@ public record RequisitionResponse(
     public record KitchenSummary(Integer id, String name) {
     }
 
-    public record UserSummary(UUID id, String name) {
+    public record UserSummary(UUID id, String name, String photoUrl) {
     }
 
     public static RequisitionResponse fromEntity(Requisition requisition) {
@@ -38,7 +38,8 @@ public record RequisitionResponse(
 
     public static RequisitionResponse fromEntity(Requisition requisition, RequisitionItemsSummary items) {
         var approver = requisition.getApprover() != null
-                ? new UserSummary(requisition.getApprover().getId(), requisition.getApprover().getName())
+                ? new UserSummary(requisition.getApprover().getId(), requisition.getApprover().getName(),
+                        requisition.getApprover().getPhotoUrl())
                 : null;
 
         return new RequisitionResponse(
@@ -48,7 +49,8 @@ public record RequisitionResponse(
                 requisition.getStatus(),
                 requisition.getReason(),
                 new KitchenSummary(requisition.getKitchen().getId(), requisition.getKitchen().getName()),
-                new UserSummary(requisition.getRequester().getId(), requisition.getRequester().getName()),
+                new UserSummary(requisition.getRequester().getId(), requisition.getRequester().getName(),
+                        requisition.getRequester().getPhotoUrl()),
                 approver,
                 requisition.getCreatedAt(),
                 requisition.getApprovedAt(),

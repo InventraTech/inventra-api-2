@@ -8,6 +8,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
+import com.inventra.api.core.service.image.ImagePaths;
 import com.inventra.api.core.service.image.ImageStorage;
 import com.inventra.api.core.service.image.ImageValidator;
 import com.inventra.api.core.service.image.StoredImage;
@@ -43,8 +44,6 @@ import lombok.RequiredArgsConstructor;
 @Service
 @RequiredArgsConstructor
 public class ProductService implements ProductUseCase {
-
-    private static final String PHOTO_PUBLIC_ID_PREFIX = "inventra/products/";
 
     private final ProductRepository repository;
     private final CategoryRepository categoryRepository;
@@ -132,7 +131,7 @@ public class ProductService implements ProductUseCase {
         imageValidator.validate(content);
         Product product = findById(id);
 
-        StoredImage image = imageStorage.upload(content, PHOTO_PUBLIC_ID_PREFIX + id);
+        StoredImage image = imageStorage.upload(content, ImagePaths.product(id));
         product.setPhotoUrl(image.url());
         return repository.save(product);
     }
@@ -141,7 +140,7 @@ public class ProductService implements ProductUseCase {
     public Product removePhoto(Integer id) {
         Product product = findById(id);
 
-        imageStorage.delete(PHOTO_PUBLIC_ID_PREFIX + id);
+        imageStorage.delete(ImagePaths.product(id));
         product.setPhotoUrl(null);
         return repository.save(product);
     }

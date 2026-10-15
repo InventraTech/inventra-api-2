@@ -2,6 +2,8 @@ package com.inventra.api.infrastructure.controller;
 
 import java.net.URI;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -53,7 +55,11 @@ public class KitchenAccessRequestController {
     @GetMapping
     public ResponseEntity<List<KitchenAccessRequestResponse>> list(
             @RequestParam(required = false) KitchenAccessRequestStatus status) {
-        return ResponseEntity.ok(service.listForMyKitchen(status).stream().map(this::toResponse).toList());
+        List<KitchenAccessRequest> requests = service.listForMyKitchen(status);
+        Map<UUID, String> photoUrls = service.userPhotoUrls(requests);
+        return ResponseEntity.ok(requests.stream()
+                .map(request -> KitchenAccessRequestResponse.from(request, service.pendingTtl(), photoUrls.get(request.userId())))
+                .toList());
     }
 
     @Operation(summary = "Aprova um pedido e vincula o usuário à cozinha")
@@ -72,6 +78,7 @@ public class KitchenAccessRequestController {
     }
 
     private KitchenAccessRequestResponse toResponse(KitchenAccessRequest request) {
-        return KitchenAccessRequestResponse.from(request, service.pendingTtl());
+        String photoUrl = service.userPhotoUrls(List.of(request)).get(request.userId());
+        return KitchenAccessRequestResponse.from(request, service.pendingTtl(), photoUrl);
     }
 }
