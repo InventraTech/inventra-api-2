@@ -27,6 +27,7 @@ import com.inventra.api.infrastructure.client.openfoodfacts.model.OpenFoodFactsP
 import com.inventra.api.infrastructure.security.Roles;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -42,6 +43,7 @@ public class ProductController {
     private final BarcodeLookupService barcodeLookupService;
 
     @Operation(summary = "Cria um produto")
+    @ApiResponse(responseCode = "201", description = "Recurso criado")
     @PreAuthorize(Roles.SUPERVISOR)
     @PostMapping
     public ResponseEntity<ProductResponse> create(@Valid @RequestBody CreateProductRequest request) {
@@ -111,6 +113,7 @@ public class ProductController {
     }
 
     @Operation(summary = "Ativa um produto")
+    @ApiResponse(responseCode = "204", description = "Operação concluída, sem corpo na resposta")
     @PreAuthorize(Roles.SUPERVISOR)
     @PatchMapping("/{id}/activate")
     public ResponseEntity<Void> activate(@PathVariable Integer id) {
@@ -119,6 +122,7 @@ public class ProductController {
     }
 
     @Operation(summary = "Desativa um produto")
+    @ApiResponse(responseCode = "204", description = "Operação concluída, sem corpo na resposta")
     @PreAuthorize(Roles.SUPERVISOR)
     @PatchMapping("/{id}/deactivate")
     public ResponseEntity<Void> deactivate(@PathVariable Integer id) {
@@ -127,6 +131,7 @@ public class ProductController {
     }
 
     @Operation(summary = "Vincula um fornecedor ao produto")
+    @ApiResponse(responseCode = "204", description = "Operação concluída, sem corpo na resposta")
     @PreAuthorize(Roles.SUPERVISOR)
     @PostMapping("/{id}/suppliers")
     public ResponseEntity<Void> linkSupplier(@PathVariable Integer id, @Valid @RequestBody LinkSupplierRequest request) {
@@ -141,6 +146,7 @@ public class ProductController {
     }
 
     @Operation(summary = "Define estoque mínimo e máximo do produto em uma cozinha")
+    @ApiResponse(responseCode = "204", description = "Operação concluída, sem corpo na resposta")
     @PreAuthorize(Roles.SUPERVISOR)
     @PutMapping("/{id}/kitchen-parameters")
     public ResponseEntity<Void> setKitchenParameters(@PathVariable Integer id,

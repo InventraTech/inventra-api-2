@@ -15,6 +15,7 @@ import com.inventra.api.core.service.category.model.response.CategoryResponse;
 import com.inventra.api.infrastructure.security.Roles;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +29,7 @@ public class CategoryController {
     private final CategoryUseCase useCase;
 
     @Operation(summary = "Cria uma categoria")
+    @ApiResponse(responseCode = "201", description = "Recurso criado")
     @PreAuthorize(Roles.SUPERVISOR)
     @PostMapping
     public ResponseEntity<CategoryResponse> create(@Valid @RequestBody CreateCategoryRequest request) {
@@ -61,6 +63,7 @@ public class CategoryController {
     }
 
     @Operation(summary = "Exclui uma categoria")
+    @ApiResponse(responseCode = "204", description = "Operação concluída, sem corpo na resposta")
     @PreAuthorize(Roles.SUPERVISOR)
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Integer id) {

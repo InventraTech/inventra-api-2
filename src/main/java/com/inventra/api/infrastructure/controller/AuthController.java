@@ -15,6 +15,7 @@ import com.inventra.api.core.service.auth.model.request.RegisterRequest;
 import com.inventra.api.core.service.auth.model.response.LoginResponse;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -48,6 +49,7 @@ public class AuthController {
     }
 
     @Operation(summary = "Invalida o refresh token informado")
+    @ApiResponse(responseCode = "204", description = "Operação concluída, sem corpo na resposta")
     @PostMapping("/logout")
     public ResponseEntity<Void> logout(@Valid @RequestBody RefreshTokenRequest request) {
         useCase.logout(request);
@@ -55,6 +57,7 @@ public class AuthController {
     }
 
     @Operation(summary = "Cadastra um novo usuário e já devolve os tokens")
+    @ApiResponse(responseCode = "201", description = "Recurso criado")
     @PostMapping("/register")
     public ResponseEntity<LoginResponse> register(@Valid @RequestBody RegisterRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(useCase.register(request));

@@ -20,6 +20,7 @@ import com.inventra.api.core.service.stockbatch.model.response.StockBatchRespons
 import com.inventra.api.infrastructure.security.Roles;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -34,6 +35,7 @@ public class StockBatchController {
     private final StockBatchUseCase useCase;
 
     @Operation(summary = "Registra a entrada de um lote")
+    @ApiResponse(responseCode = "201", description = "Recurso criado")
     @PostMapping
     public ResponseEntity<StockBatchResponse> registerEntry(@Valid @RequestBody RegisterStockEntryRequest request) {
         StockBatch created = useCase.registerEntry(request);
