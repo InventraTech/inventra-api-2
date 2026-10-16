@@ -11,7 +11,7 @@ O trabalho não commitado do INV2-26 permanece na pasta original.
 - Payload ausente ou inválido vai para quarentena com FAILED e sai de pending.
 - Falhas transitórias têm contador persistido, cinco execuções e backoff de
   15/30/60/120 segundos. Falha de ACK após sucesso não conta como falha de processamento.
-- POST síncrono e assíncrono exigem ADMIN/SUPERVISOR; comprador/estoquista recebem 403.
+- POST síncrono e assíncrono exigem SUPERVISOR; comprador/estoquista recebem 403.
 - Concorrência na checagem de barcode documentada, sem prometer reserva no enqueue.
 - Regressões de 404/405/415; repasse de ErrorResponse preserva também headers.
 - Imports da implementação normalizados; logs de infraestrutura mantêm stack trace.

@@ -15,6 +15,7 @@ import com.inventra.api.core.service.supplier.model.response.SupplierResponse;
 import com.inventra.api.infrastructure.security.Roles;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +29,7 @@ public class SupplierController {
     private final SupplierUseCase useCase;
 
     @Operation(summary = "Cria um fornecedor")
+    @ApiResponse(responseCode = "201", description = "Recurso criado")
     @PreAuthorize(Roles.SUPERVISOR)
     @PostMapping
     public ResponseEntity<SupplierResponse> create(@Valid @RequestBody CreateSupplierRequest request) {
@@ -63,6 +65,7 @@ public class SupplierController {
     }
 
     @Operation(summary = "Ativa um fornecedor")
+    @ApiResponse(responseCode = "204", description = "Operação concluída, sem corpo na resposta")
     @PreAuthorize(Roles.SUPERVISOR)
     @PatchMapping("/{id}/activate")
     public ResponseEntity<Void> activate(@PathVariable Integer id) {
@@ -71,6 +74,7 @@ public class SupplierController {
     }
 
     @Operation(summary = "Desativa um fornecedor")
+    @ApiResponse(responseCode = "204", description = "Operação concluída, sem corpo na resposta")
     @PreAuthorize(Roles.SUPERVISOR)
     @PatchMapping("/{id}/deactivate")
     public ResponseEntity<Void> deactivate(@PathVariable Integer id) {
