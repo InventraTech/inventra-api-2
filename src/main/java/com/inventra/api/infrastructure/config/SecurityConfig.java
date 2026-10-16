@@ -1,7 +1,6 @@
 package com.inventra.api.infrastructure.config;
 
 import java.util.List;
-import org.springframework.http.HttpMethod;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -50,8 +49,6 @@ public class SecurityConfig {
                         "/api/auth/google").permitAll()
                 .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                 .requestMatchers("/actuator/health", "/actuator/health/liveness", "/actuator/health/readiness").permitAll()
-                .requestMatchers(HttpMethod.POST, "/api/products", "/api/products/barcode-registrations")
-                    .hasRole("SUPERVISOR")
                 .anyRequest().authenticated())
             .exceptionHandling(ex -> ex
                 .authenticationEntryPoint(authenticationEntryPoint)

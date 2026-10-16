@@ -4,6 +4,7 @@ import java.net.URI;
 import java.util.UUID;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.inventra.api.core.service.productqueue.ProductRegistrationService;
 import com.inventra.api.core.service.productqueue.model.BarcodeRegistrationRequest;
 import com.inventra.api.core.service.productqueue.model.ProductRegistrationResponse;
+import com.inventra.api.infrastructure.security.Roles;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +26,7 @@ import lombok.RequiredArgsConstructor;
 public class ProductRegistrationController {
     private final ProductRegistrationService service;
 
+    @PreAuthorize(Roles.SUPERVISOR)
     @PostMapping
     public ResponseEntity<ProductRegistrationResponse> enqueue(@Valid @RequestBody BarcodeRegistrationRequest request) {
         var response = service.enqueue(request);
