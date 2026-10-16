@@ -51,7 +51,7 @@ public class SecurityConfig {
                 .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                 .requestMatchers("/actuator/health", "/actuator/health/liveness", "/actuator/health/readiness").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/products", "/api/products/barcode-registrations")
-                    .hasAnyRole("ADMIN", "SUPERVISOR")
+                    .hasRole("SUPERVISOR")
                 .anyRequest().authenticated())
             .exceptionHandling(ex -> ex
                 .authenticationEntryPoint(authenticationEntryPoint)
