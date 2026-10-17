@@ -26,6 +26,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.access.AccessDeniedException;
 
 import com.inventra.api.core.domain.category.Category;
@@ -70,6 +71,7 @@ class StockBatchServiceTest {
     @Mock private ProductKitchenParameterRepository productKitchenParameterRepository;
     @Mock private StockMovementRepository movementRepository;
     @Mock private KitchenAccessGuard accessGuard;
+    @Mock private ApplicationEventPublisher events;
 
     @InjectMocks private StockBatchService service;
 

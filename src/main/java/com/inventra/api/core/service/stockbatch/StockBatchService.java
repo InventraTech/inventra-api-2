@@ -8,9 +8,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.inventra.api.core.service.ranking.StockRankingChanged;
 import com.inventra.api.core.service.stockbatch.model.request.ConsumeProductRequest;
 import com.inventra.api.core.service.stockbatch.model.request.RegisterStockEntryRequest;
 import com.inventra.api.core.service.stockbatch.model.response.BatchConsumptionResponse;
@@ -48,10 +50,12 @@ public class StockBatchService implements StockBatchUseCase {
     private final ProductKitchenParameterRepository productKitchenParameterRepository;
     private final StockMovementRepository movementRepository;
     private final KitchenAccessGuard accessGuard;
+    private final ApplicationEventPublisher events;
 
     @Override
     @Transactional
     public StockBatch registerEntry(RegisterStockEntryRequest request) {
+        requirePositive(request.initialQuantity());
         accessGuard.assertAccess(request.kitchenId());
         if (request.expirationDate() != null && request.expirationDate().isBefore(request.entryDate())) {
             throw new IllegalArgumentException("A data de validade não pode ser anterior à data de entrada.");
@@ -88,12 +92,14 @@ public class StockBatchService implements StockBatchUseCase {
         StockBatch saved = repository.save(batch);
         // a entrada em lote existente é gravada pela procedure; a criação do lote, aqui
         recordMovement(saved, StockMovementType.ENTRY, saved.getInitialQuantity(), saved.getCurrentQuantity());
+        events.publishEvent(new StockRankingChanged(request.kitchenId()));
         return saved;
     }
 
     @Override
     @Transactional
     public StockBatch consume(Integer batchId, BigDecimal quantity, StockMovementReason reason) {
+        requirePositive(quantity);
         StockMovementReason writeOffReason = manualReason(reason);
         StockBatch batch = findAccessibleBatch(batchId);
         assertKitchenActive(batch.getKitchen());
@@ -110,17 +116,22 @@ public class StockBatchService implements StockBatchUseCase {
         }
 
         repository.callWriteOffStock(batchId, quantity, currentUserId(), writeOffReason.name());
-        return reload(batchId);
+        StockBatch updated = reload(batchId);
+        events.publishEvent(new StockRankingChanged(updated.getKitchen().getId()));
+        return updated;
     }
 
     @Override
     @Transactional
     public StockBatch restock(Integer batchId, BigDecimal quantity) {
+        requirePositive(quantity);
         StockBatch batch = findAccessibleBatch(batchId);
         assertKitchenActive(batch.getKitchen());
 
         repository.callRegisterStockEntry(batchId, quantity, currentUserId());
-        return reload(batchId);
+        StockBatch updated = reload(batchId);
+        events.publishEvent(new StockRankingChanged(updated.getKitchen().getId()));
+        return updated;
     }
 
     @Override
@@ -148,6 +159,7 @@ public class StockBatchService implements StockBatchUseCase {
     private List<BatchConsumptionResponse> consumeByExpiration(Integer kitchenId, Integer productId,
                                                                BigDecimal quantity, StockMovementReason reason,
                                                                Integer requisitionId) {
+        requirePositive(quantity);
         accessGuard.assertAccess(kitchenId);
         UUID userId = currentUserId();
         List<StockBatch> batches = repository.findUsableForConsumption(kitchenId, productId, LocalDate.now());
@@ -175,6 +187,7 @@ public class StockBatchService implements StockBatchUseCase {
         if (remaining.compareTo(BigDecimal.ZERO) > 0) {
             throw new BusinessRuleException("Estoque insuficiente para atender a quantidade solicitada.");
         }
+        events.publishEvent(new StockRankingChanged(kitchenId));
         return consumed;
     }
 
@@ -183,6 +196,9 @@ public class StockBatchService implements StockBatchUseCase {
     @Override
     @Transactional
     public StockBatch adjust(Integer batchId, BigDecimal newQuantity) {
+        if (newQuantity == null || newQuantity.signum() < 0) {
+            throw new IllegalArgumentException("Quantidade de ajuste deve ser zero ou positiva.");
+        }
         StockBatch batch = repository.findByIdForUpdate(batchId)
             .orElseThrow(() -> new ResourceNotFoundException("Lote não encontrado."));
         accessGuard.assertAccess(batch.getKitchen().getId());
@@ -201,6 +217,7 @@ public class StockBatchService implements StockBatchUseCase {
         if (difference.signum() != 0) {
             recordMovement(saved, StockMovementType.ADJUSTMENT, difference, newQuantity);
         }
+        events.publishEvent(new StockRankingChanged(batch.getKitchen().getId()));
         return saved;
     }
 
@@ -333,5 +350,11 @@ public class StockBatchService implements StockBatchUseCase {
     private StockBatch reload(Integer batchId) {
         return repository.findById(batchId)
             .orElseThrow(() -> new ResourceNotFoundException("Lote não encontrado."));
+    }
+
+    private static void requirePositive(BigDecimal quantity) {
+        if (quantity == null || quantity.signum() <= 0) {
+            throw new IllegalArgumentException("Quantidade deve ser positiva.");
+        }
     }
 }

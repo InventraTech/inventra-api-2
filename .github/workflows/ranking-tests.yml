@@ -1,0 +1,49 @@
+name: Ranking Redis integration
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ranking:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 16379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: inventra_ranking_test
+          POSTGRES_USER: ranking_test
+          POSTGRES_PASSWORD: ranking_test
+        ports:
+          - 15432:5432
+        options: >-
+          --health-cmd "pg_isready -U ranking_test -d inventra_ranking_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Test ranking with disposable PostgreSQL and Redis
+        env:
+          REDIS_INTEGRATION_TESTS: 'false'
+          REDIS_RANKING_TESTS: 'true'
+          POSTGRES_REDIS_RANKING_TESTS: 'true'
+        run: bash mvnw -B -ntp '-Dtest=*Ranking*Test' test
