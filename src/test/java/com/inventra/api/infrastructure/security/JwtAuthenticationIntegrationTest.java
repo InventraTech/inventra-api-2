@@ -2,16 +2,20 @@ package com.inventra.api.infrastructure.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.util.List;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -76,21 +80,21 @@ class JwtAuthenticationIntegrationTest {
     @Autowired
     private KitchenRepository kitchenRepository;
 
-    @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(strings = {"comprador", "estoquista"})
+    @ParameterizedTest
+    @ValueSource(strings = {"comprador", "estoquista"})
     void restrictedRolesCannotCreateProductsThroughEitherEndpoint(String role) throws Exception {
         Profile roleProfile = profileRepository.findByAccessType(role).orElseGet(
                 () -> profileRepository.saveAndFlush(Profile.builder().accessType(role).build()));
         user.setProfile(roleProfile);
         userRepository.saveAndFlush(user);
         String token = login(email, RAW_PASSWORD);
-        for (String url : java.util.List.of("/api/products", "/api/products/barcode-registrations")) {
+        for (String url : List.of("/api/products", "/api/products/barcode-registrations")) {
             mockMvc.perform(post(url).header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("{\"name\":\"Arroz\",\"unitId\":1,\"barcode\":\"7891234567890\"}"))
                     .andExpect(status().isForbidden());
         }
-        org.mockito.Mockito.verifyNoInteractions(productRegistrationQueue);
+        verifyNoInteractions(productRegistrationQueue);
     }
 
     @Test

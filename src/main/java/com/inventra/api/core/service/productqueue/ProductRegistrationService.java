@@ -1,8 +1,6 @@
 package com.inventra.api.core.service.productqueue;
 
 import java.util.UUID;
-import com.inventra.api.infrastructure.repository.ProductRepository;
-import com.inventra.api.infrastructure.exception.BusinessRuleException;
 
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
@@ -10,8 +8,10 @@ import org.springframework.stereotype.Service;
 import com.inventra.api.core.service.productqueue.model.BarcodeRegistrationRequest;
 import com.inventra.api.core.service.productqueue.model.ProductRegistrationJob;
 import com.inventra.api.core.service.productqueue.model.ProductRegistrationResponse;
+import com.inventra.api.infrastructure.exception.BusinessRuleException;
 import com.inventra.api.infrastructure.exception.ResourceNotFoundException;
 import com.inventra.api.infrastructure.redis.queue.RedisProductRegistrationQueue;
+import com.inventra.api.infrastructure.repository.ProductRepository;
 import com.inventra.api.infrastructure.security.KitchenAccessGuard;
 
 import lombok.RequiredArgsConstructor;

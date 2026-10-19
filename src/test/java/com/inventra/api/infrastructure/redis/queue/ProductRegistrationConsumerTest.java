@@ -1,19 +1,28 @@
 package com.inventra.api.infrastructure.redis.queue;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
+import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.data.redis.RedisConnectionFailureException;
+
 import com.inventra.api.core.service.productqueue.ProductRegistrationProcessor;
 import com.inventra.api.core.service.productqueue.model.BarcodeRegistrationRequest;
 import com.inventra.api.core.service.productqueue.model.ProductRegistrationJob;
 import com.inventra.api.infrastructure.exception.QueueServiceException;
+
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.json.JsonMapper;
 
 class ProductRegistrationConsumerTest {
     @Test void lostAcknowledgementAfterLastAllowedExecutionDoesNotTurnSuccessIntoFailure() {
@@ -22,8 +31,8 @@ class ProductRegistrationConsumerTest {
         var initial = ProductRegistrationJob.queued(UUID.randomUUID(),
                 new BarcodeRegistrationRequest("Arroz", null, null, 1, "7891234567890"));
         for (int i = 0; i < 4; i++) initial = initial.retry();
-        var stored = new java.util.concurrent.atomic.AtomicReference<>(initial.processing());
-        var loseAcknowledgement = new java.util.concurrent.atomic.AtomicBoolean(true);
+        var stored = new AtomicReference<>(initial.processing());
+        var loseAcknowledgement = new AtomicBoolean(true);
         when(queue.find(any())).thenAnswer(invocation -> Optional.of(stored.get()));
         when(queue.update(any(), eq("owner"))).thenAnswer(invocation -> {
             ProductRegistrationJob update = invocation.getArgument(0);
@@ -36,7 +45,7 @@ class ProductRegistrationConsumerTest {
         var consumer = new ProductRegistrationConsumer(queue, processor, false);
         assertThrows(QueueServiceException.class, () -> consumer.process(stored.get().eventId(), "owner"));
         consumer.process(stored.get().eventId(), "owner");
-        org.assertj.core.api.Assertions.assertThat(stored.get().status()).isEqualTo(ProductRegistrationJob.Status.COMPLETED);
+        assertThat(stored.get().status()).isEqualTo(ProductRegistrationJob.Status.COMPLETED);
         verify(queue, never()).update(argThat(j -> j.status() == ProductRegistrationJob.Status.FAILED), any());
     }
 
@@ -60,8 +69,8 @@ class ProductRegistrationConsumerTest {
         consumer.process(missing, "owner");
         verify(queue).quarantine(missing, "owner", "PAYLOAD_MISSING");
         var corrupt = UUID.randomUUID();
-        RuntimeException decodeError = assertThrows(tools.jackson.core.JacksonException.class,
-                () -> tools.jackson.databind.json.JsonMapper.builder().build()
+        RuntimeException decodeError = assertThrows(JacksonException.class,
+                () -> JsonMapper.builder().build()
                         .readValue("{", ProductRegistrationJob.class));
         when(queue.find(corrupt)).thenThrow(decodeError);
         consumer.process(corrupt, "owner");
@@ -72,7 +81,7 @@ class ProductRegistrationConsumerTest {
     @Test void transientFailuresRemainBoundedAcrossConsumerRestarts() {
         var queue = mock(RedisProductRegistrationQueue.class);
         var processor = mock(ProductRegistrationProcessor.class);
-        var stored = new java.util.concurrent.atomic.AtomicReference<>(ProductRegistrationJob.queued(UUID.randomUUID(),
+        var stored = new AtomicReference<>(ProductRegistrationJob.queued(UUID.randomUUID(),
                 new BarcodeRegistrationRequest("Arroz", null, null, 1, "7891234567890")));
         when(queue.find(any())).thenAnswer(invocation -> Optional.of(stored.get()));
         when(queue.update(any(), eq("owner"))).thenAnswer(invocation -> {
@@ -84,31 +93,31 @@ class ProductRegistrationConsumerTest {
             var restarted = new ProductRegistrationConsumer(queue, processor, false);
             assertThrows(QueueServiceException.class, () -> restarted.process(stored.get().eventId(), "owner"));
             var retry = stored.get();
-            org.assertj.core.api.Assertions.assertThat(retry.nextAttemptAt()).isAfter(java.time.Instant.now());
+            assertThat(retry.nextAttemptAt()).isAfter(Instant.now());
             stored.set(new ProductRegistrationJob(retry.eventId(), retry.userId(), retry.request(), retry.status(),
                     retry.productId(), retry.errorCode(), retry.submittedAt(), retry.startedAt(), retry.finishedAt(),
-                    retry.attempts(), java.time.Instant.EPOCH));
+                    retry.attempts(), Instant.EPOCH));
         }
         new ProductRegistrationConsumer(queue, processor, false).process(stored.get().eventId(), "owner");
-        org.assertj.core.api.Assertions.assertThat(stored.get().attempts()).isEqualTo(5);
-        org.assertj.core.api.Assertions.assertThat(stored.get().errorCode()).isEqualTo("RETRY_LIMIT_EXCEEDED");
-        org.assertj.core.api.Assertions.assertThat(stored.get().status()).isEqualTo(ProductRegistrationJob.Status.FAILED);
+        assertThat(stored.get().attempts()).isEqualTo(5);
+        assertThat(stored.get().errorCode()).isEqualTo("RETRY_LIMIT_EXCEEDED");
+        assertThat(stored.get().status()).isEqualTo(ProductRegistrationJob.Status.FAILED);
         verify(processor, times(5)).process(any());
     }
 
     @Test void infrastructureReadFailureDoesNotQuarantineAValidJob() {
         var queue = mock(RedisProductRegistrationQueue.class);
         var processor = mock(ProductRegistrationProcessor.class);
-        when(queue.find(any())).thenThrow(new org.springframework.data.redis.RedisConnectionFailureException("offline"));
-        assertThrows(org.springframework.data.redis.RedisConnectionFailureException.class,
+        when(queue.find(any())).thenThrow(new RedisConnectionFailureException("offline"));
+        assertThrows(RedisConnectionFailureException.class,
                 () -> new ProductRegistrationConsumer(queue, processor, false).process(UUID.randomUUID(), "owner"));
         verify(queue, never()).quarantine(any(), any(), any());
     }
 
     @Test void legacyJsonWithoutAttemptsRemainsReadable() {
-        var job = tools.jackson.databind.json.JsonMapper.builder().build()
+        var job = JsonMapper.builder().build()
                 .readValue("{\"status\":\"QUEUED\"}", ProductRegistrationJob.class);
-        org.assertj.core.api.Assertions.assertThat(job.attempts()).isZero();
+        assertThat(job.attempts()).isZero();
     }
     @Test void databaseOutageLeavesJobPendingAndNextAttemptSucceeds() {
         var queue = mock(RedisProductRegistrationQueue.class);

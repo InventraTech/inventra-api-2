@@ -11,17 +11,18 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.SmartLifecycle;
 import org.springframework.dao.DataAccessException;
-import org.springframework.dao.TransientDataAccessException;
 import org.springframework.dao.DataAccessResourceFailureException;
-import org.springframework.transaction.CannotCreateTransactionException;
-import tools.jackson.core.JacksonException;
+import org.springframework.dao.TransientDataAccessException;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.CannotCreateTransactionException;
 
 import com.inventra.api.core.service.productqueue.ProductRegistrationProcessor;
 import com.inventra.api.core.service.productqueue.model.ProductRegistrationJob;
 import com.inventra.api.infrastructure.exception.BusinessRuleException;
 import com.inventra.api.infrastructure.exception.QueueServiceException;
 import com.inventra.api.infrastructure.exception.ResourceNotFoundException;
+
+import tools.jackson.core.JacksonException;
 
 @Component
 public class ProductRegistrationConsumer implements SmartLifecycle {
