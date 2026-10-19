@@ -18,14 +18,15 @@ public record InventoryResponse(
     public record KitchenSummary(Integer id, String name) {
     }
 
-    public record UserSummary(UUID id, String name) {
+    public record UserSummary(UUID id, String name, String photoUrl) {
     }
 
     public static InventoryResponse fromEntity(Inventory inventory) {
         return new InventoryResponse(
                 inventory.getId(),
                 new KitchenSummary(inventory.getKitchen().getId(), inventory.getKitchen().getName()),
-                new UserSummary(inventory.getResponsible().getId(), inventory.getResponsible().getName()),
+                new UserSummary(inventory.getResponsible().getId(), inventory.getResponsible().getName(),
+                        inventory.getResponsible().getPhotoUrl()),
                 inventory.getStartedAt(),
                 inventory.getClosedAt(),
                 inventory.getStatus(),

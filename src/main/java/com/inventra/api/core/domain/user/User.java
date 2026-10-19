@@ -43,6 +43,10 @@ public class User {
     @Column(name = "firebase_uid", unique = true, length = 128)
     private String firebaseUid;
 
+    // URL da foto de perfil (Cloudinary, ou a foto do Google no primeiro acesso); nula = app mostra as iniciais
+    @Column(name = "photo_url", length = 255)
+    private String photoUrl;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "id_kitchen")
     @ToString.Exclude

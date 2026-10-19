@@ -17,6 +17,7 @@ import com.inventra.api.core.service.inventory.model.response.InventoryResponse;
 import com.inventra.api.infrastructure.security.Roles;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +32,7 @@ public class InventoryController {
     private final InventoryUseCase useCase;
 
     @Operation(summary = "Abre um inventário para uma cozinha")
+    @ApiResponse(responseCode = "201", description = "Recurso criado")
     @PostMapping
     public ResponseEntity<InventoryResponse> open(@Valid @RequestBody OpenInventoryRequest request) {
         Inventory opened = useCase.open(request);
@@ -66,6 +68,7 @@ public class InventoryController {
     }
 
     @Operation(summary = "Registra a contagem de um lote no inventário")
+    @ApiResponse(responseCode = "201", description = "Recurso criado")
     @PostMapping("/{id}/counts")
     public ResponseEntity<InventoryCountResponse> registerCount(@PathVariable Integer id,
                                                                   @Valid @RequestBody RegisterInventoryCountRequest request) {

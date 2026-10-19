@@ -18,7 +18,7 @@ A API recebe os dados de um produto revisados pelo usuário, enfileira o cadastr
 
 1. Ler o código de barras. O endpoint existente `GET /api/products/barcode-lookup?barcode=...` pode auxiliar no preenchimento com Open Food Facts.
 2. Solicitar que o usuário revise nome, marca, categoria e unidade. Código de barras não informa lote, quantidade disponível ou validade.
-3. Enviar os dados confirmados com JWT de ADMIN ou SUPERVISOR. COMPRADOR e ESTOQUISTA recebem 403. A mesma regra protege POST /api/products e POST /api/products/barcode-registrations:
+3. Enviar os dados confirmados com JWT de SUPERVISOR. COMPRADOR e ESTOQUISTA recebem 403. A mesma regra protege POST /api/products e POST /api/products/barcode-registrations:
 
 ```http
 POST /api/products/barcode-registrations

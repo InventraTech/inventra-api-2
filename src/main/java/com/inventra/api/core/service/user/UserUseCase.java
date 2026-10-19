@@ -20,8 +20,8 @@ public interface UserUseCase {
     // ficar vinculada). Vazio = primeiro acesso.
     Optional<User> findGoogleAccount(String firebaseUid, String email);
 
-    // primeiro acesso com Google: conta sem senha e sem cozinha
-    User registerWithGoogle(String name, String email, String firebaseUid, Integer profileId);
+    // primeiro acesso com Google: conta sem senha e sem cozinha; photoUrl = foto do Google, se vier
+    User registerWithGoogle(String name, String email, String firebaseUid, String photoUrl, Integer profileId);
 
     User findById(UUID id);
 
@@ -40,6 +40,11 @@ public interface UserUseCase {
     void activate(UUID id);
 
     void deactivate(UUID id);
+
+    // foto de perfil do usuário logado: cada um só troca a própria
+    User updateCurrentPhoto(byte[] content);
+
+    User removeCurrentPhoto();
 
     // atualiza lastLogin, chamado pelo fluxo de auth
     void registerLogin(UUID id);

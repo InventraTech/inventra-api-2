@@ -50,7 +50,8 @@ import com.inventra.api.infrastructure.repository.UserRepository;
 
 // Segunda leva de pedidos do time mobile: login com Google, descoberta de cozinhas, notificações por pessoa,
 // rascunho de requisição, movimentações de estoque e consulta por código de barras. As procedures só existem
-// no Postgres: aqui (H2) ficam os fluxos que não passam por elas.
+// no Postgres: aqui (H2) ficam os fluxos que não passam por elas; as que passam estão no
+// DatabaseRoutinesIntegrationTest.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -129,6 +130,22 @@ class MobileFeaturesIntegrationTest {
                         .content("{\"email\":\"" + email + "\",\"password\":\"qualquer123\"}"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.detail").value("E-mail ou senha inválidos."));
+    }
+
+    @Test
+    void googleFirstAccessUsesTheGooglePictureAsProfilePhoto() throws Exception {
+        String email = "lia-" + UUID.randomUUID() + "@gmail.com";
+        String picture = "https://lh3.googleusercontent.com/a/foto-da-lia=s96-c";
+        String idToken = "google|uid-" + UUID.randomUUID() + "|" + email + "|Lia Rocha|" + picture;
+
+        google(idToken, "COMPRADOR")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.user.photoUrl").value(picture));
+        // sem claim "picture": conta sem foto
+        String withoutPicture = "google|uid-" + UUID.randomUUID() + "|outro-" + email + "|Outra Pessoa";
+        google(withoutPicture, "COMPRADOR")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.user.photoUrl").doesNotExist());
     }
 
     @Test

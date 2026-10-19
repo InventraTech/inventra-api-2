@@ -120,7 +120,8 @@ public class AuthService implements AuthUseCase {
                     "Conta ainda não cadastrada: informe o tipo de acesso para concluir o cadastro.", properties);
         }
         Profile profile = resolveProfile(accessType);
-        return userUseCase.registerWithGoogle(displayName(identity), identity.email(), identity.uid(), profile.getId());
+        return userUseCase.registerWithGoogle(displayName(identity), identity.email(), identity.uid(), identity.picture(),
+                profile.getId());
     }
 
     private static String displayName(GoogleIdentity identity) {
