@@ -5,9 +5,10 @@ lotes por cozinha, ordenados por validade, com PostgreSQL como fonte de verdade.
 
 ## Contrato
 
-`GET /ranking?kitchenId=1&limit=10`, com autenticação JWT.
+`GET /api/stock-batches/ranking?kitchenId=1&limit=10`, com autenticação JWT.
 `kitchenId` é obrigatório e positivo; `limit` vai de 1 a 100 e assume 10.
-O KitchenAccessGuard restringe cada usuário à própria cozinha, inclusive administradores.
+Somente supervisores e estoquistas podem consultar o endpoint (`Roles.STOCK`).
+O KitchenAccessGuard restringe cada usuário à própria cozinha.
 
 Exemplo de resposta:
 
@@ -76,38 +77,21 @@ distribuída nem promessa de atualização imediata durante uma indisponibilidad
 - REDIS_RANKING_TTL_SECONDS: 60
 
 O ranking reutiliza StockBatch e Kitchen e não exige migration própria nem novas
-credenciais. A migration V4__product_registration_event.sql permanece pertencendo
-exclusivamente à INV2-25.
-A dependência de estrutura PostgreSQL/BD2-03 é o modelo existente de lotes;
-as procedures já integradas em V3 continuam responsáveis pelas movimentações.
+credenciais. O schema e as procedures vêm integralmente das migrations oficiais
+sincronizadas com o `inventra-database-2`.
 
 ## Testes
 
-Suíte padrão (H2, mocks e endpoints; não usa Redis compartilhado):
+Suíte padrão:
 
 ```powershell
-.\mvnw.cmd "-DargLine=-Djdk.net.unixdomain.tmpdir=target/java-nio-tcp" test
+.\mvnw.cmd clean test
 ```
 
-Integração real em serviços locais DESCARTÁVEIS:
-
-```powershell
-docker run -d --rm --name inventra-ranking-test-redis -p 127.0.0.1:16379:6379 redis:7-alpine
-docker run -d --rm --name inventra-ranking-test-postgres -p 127.0.0.1:15432:5432 -e POSTGRES_DB=inventra_ranking_test -e POSTGRES_USER=ranking_test -e POSTGRES_PASSWORD=ranking_test postgres:16-alpine
-# Aguarde os serviços ficarem prontos.
-$env:REDIS_RANKING_TESTS="true"
-$env:POSTGRES_REDIS_RANKING_TESTS="true"
-$env:REDIS_INTEGRATION_TESTS="false"
-.\mvnw.cmd "-Dtest=*Ranking*Test" "-DargLine=-Djdk.net.unixdomain.tmpdir=target/java-nio-tcp" test
-docker stop inventra-ranking-test-redis inventra-ranking-test-postgres
-Remove-Item Env:REDIS_RANKING_TESTS, Env:POSTGRES_REDIS_RANKING_TESTS
-```
-
-O teste PostgreSQL cria e apaga o schema do banco local `inventra_ranking_test`.
-Nunca apontar esses testes para produção. As variáveis DB_* e REDIS_* da aplicação
-não são usadas para escolher os serviços dos testes reais de ranking.
-O workflow ranking-tests.yml executa automaticamente esses testes em cada PR,
-com Redis 7 e PostgreSQL 16 descartáveis, sem secrets da Aiven.
+Com Docker disponível, Testcontainers inicia automaticamente Redis 7 e PostgreSQL 16
+descartáveis durante a suíte normal. Sem Docker, somente esses testes integrados são
+pulados, seguindo o mesmo padrão de `DatabaseRoutinesIntegrationTest`. Nenhuma variável
+de ambiente ou credencial externa é usada pelos testes.
 
 Cobertura: ordem e empates, top N, autenticação existente e autorização por cozinha,
 validação de parâmetros, saldo/status/validade, rollback, entrada/ajuste, procedures
@@ -116,21 +100,6 @@ e leitores concorrentes de snapshots atômicos.
 
 ## DevOps
 
-Validação local em 14/10/2026:
-
-- suíte completa: 111 testes, zero falhas, zero erros e 20 testes externos desativados;
-- suíte do ranking sem serviços externos: 27 testes, zero falhas e 7 desativados;
-- suíte do ranking com Redis 7 e PostgreSQL 16 descartáveis: 27 testes, zero falhas,
-  zero erros e zero desativados.
-
-O workflow `ranking-tests.yml` reproduz a última suíte em cada pull request, sem
-usar credenciais ou dados da Aiven.
-
-Branch: `feat/ranking-validade-redis`.
-Commit sugerido: `feat(redis): implementa ranking de lotes por validade`.
-Título da PR: `INV2-26: Implementar ranking de lotes por validade com Redis`.
-
-A branch foi atualizada com a entrega concluída da INV2-25 e mantém o diff da fila
-inalterado. Enquanto a INV2-25 não estiver integrada à `main`, revisar a PR da INV2-26
-contra `feat/fila-processamento-redis`; depois conferir o diff novamente contra `main`.
-Preencher o template da organização ao abrir a PR e anexar o resultado dos testes.
+Os testes do ranking fazem parte da suíte normal de CI. A branch deve permanecer
+atualizada com a `main`, e migrations PostgreSQL só podem ser adicionadas primeiro no
+`inventra-database-2`, que é a fonte da verdade do schema.

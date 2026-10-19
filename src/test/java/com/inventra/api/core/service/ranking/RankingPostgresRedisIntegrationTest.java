@@ -5,7 +5,6 @@ import static org.awaitility.Awaitility.await;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
@@ -13,16 +12,20 @@ import java.util.concurrent.*;
 import java.util.stream.IntStream;
 
 import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.core.io.ClassPathResource;
-import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.postgresql.PostgreSQLContainer;
+import org.testcontainers.utility.DockerImageName;
 
 import com.inventra.api.core.domain.kitchen.Kitchen;
 import com.inventra.api.core.domain.product.Product;
@@ -41,19 +44,26 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 @SpringBootTest
 @ActiveProfiles("test")
 @DirtiesContext
-@EnabledIfEnvironmentVariable(named = "POSTGRES_REDIS_RANKING_TESTS", matches = "true")
+@TestPropertySource(properties = {
+        "spring.datasource.driver-class-name=org.postgresql.Driver",
+        "spring.flyway.enabled=true",
+        "spring.jpa.hibernate.ddl-auto=validate"
+})
+@Testcontainers(disabledWithoutDocker = true)
 class RankingPostgresRedisIntegrationTest {
-    // Somente serviços locais descartáveis; nunca lê DB_* ou REDIS_* da aplicação.
+    @Container
+    @ServiceConnection
+    private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine");
+
+    @Container
+    private static final GenericContainer<?> REDIS = new GenericContainer<>(DockerImageName.parse("redis:7-alpine"))
+            .withExposedPorts(6379);
+
     private static final String PREFIX = "inventra:test:ranking:postgres:" + UUID.randomUUID();
-    @DynamicPropertySource static void database(DynamicPropertyRegistry properties) {
-        properties.add("spring.datasource.url",
-                () -> "jdbc:postgresql://127.0.0.1:15432/inventra_ranking_test");
-        properties.add("spring.datasource.driver-class-name", () -> "org.postgresql.Driver");
-        properties.add("spring.datasource.username", () -> "ranking_test");
-        properties.add("spring.datasource.password", () -> "ranking_test");
+    @DynamicPropertySource static void services(DynamicPropertyRegistry properties) {
         properties.add("spring.datasource.hikari.maximum-pool-size", () -> "12");
-        properties.add("spring.data.redis.host", () -> "127.0.0.1");
-        properties.add("spring.data.redis.port", () -> "16379");
+        properties.add("spring.data.redis.host", REDIS::getHost);
+        properties.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));
         properties.add("spring.data.redis.ssl.enabled", () -> "false");
         properties.add("app.redis.ranking.key-prefix", () -> PREFIX);
     }
@@ -66,7 +76,6 @@ class RankingPostgresRedisIntegrationTest {
     @Autowired UnitRepository units;
     @Autowired UserRepository users;
     @Autowired StockBatchRepository batches;
-    @Autowired JdbcTemplate jdbc;
     @Autowired StringRedisTemplate redis;
     @Autowired org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor rankingExecutor;
     @MockitoBean KitchenAccessGuard guard;
@@ -74,14 +83,7 @@ class RankingPostgresRedisIntegrationTest {
     private Product product;
     private final LocalDate date = LocalDate.of(2030, 1, 1);
 
-    @BeforeEach void fixtures() throws Exception {
-        // Carrega as procedures/triggers reais sobre o schema descartável criado pelo Hibernate.
-        jdbc.execute(new ClassPathResource("db/migration/V002__business_rules.sql")
-                .getContentAsString(StandardCharsets.UTF_8));
-        jdbc.execute(new ClassPathResource("db/migration/V007__stock_movements.sql")
-                .getContentAsString(StandardCharsets.UTF_8));
-        jdbc.execute(new ClassPathResource("db/migration/V010__stock_movement_created_at_default.sql")
-                .getContentAsString(StandardCharsets.UTF_8));
+    @BeforeEach void fixtures() {
         kitchen = kitchens.save(Kitchen.builder().name("Ranking PG").active(true)
                 .code(UUID.randomUUID().toString().substring(0, 20)).build());
         var profile = profiles.saveAndFlush(Profile.builder()

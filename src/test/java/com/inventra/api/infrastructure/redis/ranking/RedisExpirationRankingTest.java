@@ -10,24 +10,28 @@ import java.util.UUID;
 import java.util.concurrent.*;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
 import org.springframework.data.redis.connection.lettuce.*;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.utility.DockerImageName;
 import com.inventra.api.core.service.ranking.*;
 
-@EnabledIfEnvironmentVariable(named = "REDIS_RANKING_TESTS", matches = "true")
+@Testcontainers(disabledWithoutDocker = true)
 class RedisExpirationRankingTest {
+    @Container
+    private static final GenericContainer<?> REDIS = new GenericContainer<>(DockerImageName.parse("redis:7-alpine"))
+            .withExposedPorts(6379);
+
     private static LettuceConnectionFactory factory;
     private static StringRedisTemplate template;
     private RedisExpirationRanking ranking;
     private String prefix;
 
     @BeforeAll static void connect() {
-        // Variáveis separadas: nunca utiliza as credenciais Redis da aplicação.
-        var config = new RedisStandaloneConfiguration(
-                System.getenv().getOrDefault("RANKING_TEST_REDIS_HOST", "127.0.0.1"),
-                Integer.parseInt(System.getenv().getOrDefault("RANKING_TEST_REDIS_PORT", "16379")));
+        var config = new RedisStandaloneConfiguration(REDIS.getHost(), REDIS.getMappedPort(6379));
         var client = LettuceClientConfiguration.builder().commandTimeout(Duration.ofSeconds(5)).build();
         factory = new LettuceConnectionFactory(config, client);
         factory.afterPropertiesSet();
