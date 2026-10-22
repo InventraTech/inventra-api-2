@@ -32,7 +32,7 @@
   - Preços → precisão `(12,2)`
 - **Escopo por cozinha:** todo usuário só acessa dados da própria `kitchen`. Endpoints com `kitchenId` no path/body/query validam contra `user.kitchen` → **403** se divergir; listagens sem `kitchenId` (`/kitchens`, `/stock-batches/low-stock`, `/stock-batches?productId=`, `/requisitions?status=`, `/requisitions?requesterId=`, `/products/{id}/kitchen-parameters`) devolvem só dados da cozinha do usuário (filtrados no banco).
 - Endpoints paginados aceitam `?page=0&size=20&sort=name,asc` e respondem no formato `Page<T>` do Spring (`content`, `totalElements`, `totalPages`, `pageable`, ...).
-- Todos os endpoints exigem `Authorization: Bearer <token>`, **exceto** `POST /api/auth/login`, `/register`, `/google`, `/refresh`, `/logout`, `GET /swagger-ui/**`, `GET /v3/api-docs/**`, `GET /actuator/health`.
+- Todos os endpoints exigem `Authorization: Bearer <token>`, **exceto** `POST /api/auth/login`, `/register`, `/google`, `/refresh`, `/logout`, `/password/forgot`, `/password/verify`, `/password/reset`, `GET /swagger-ui/**`, `GET /v3/api-docs/**`, `GET /actuator/health`.
 - Token inválido/expirado → **401**. Conta desativada (`active = false`) → **403** no login; tokens já emitidos param de valer na hora (**401**).
 - **Papéis (RBAC):** só existem `supervisor`, `estoquista` e `comprador` (`profile.accessType`, authority `ROLE_<ACCESS_TYPE>`). Chamar um endpoint fora do papel → **403**.
   - **Supervisor:** tudo.
@@ -184,6 +184,60 @@ Primeiro acesso, em duas chamadas: o app manda só o `idToken`; se receber **409
 **Conta sem senha:** `POST /api/auth/login` com esse e-mail responde o **401** de sempre (não revela que a conta existe). A pessoa pode criar uma senha em 2.5, sem informar a atual.
 
 **Configuração:** a chave da conta de serviço do Firebase vem de `FIREBASE_CREDENTIALS_JSON` (o JSON puro ou em base64) e nunca vai para o repositório.
+
+### 1.6 Redefinição de senha ("esqueci a senha")
+
+Fluxo para o app e para o web, todos **públicos**. O e-mail traz um **código de 6 dígitos** e um **link** para a página web (`PASSWORD_RESET_WEB_URL?token=...`). Os dois caminhos terminam no mesmo `reset`:
+
+```
+App:  forgot ─► e-mail ─► digita o código ─► verify ─► resetToken ─► reset
+Web:  forgot ─► e-mail ─► abre o link (?token=...) ─────────────────► reset
+      (o web também pode usar o caminho do código)
+```
+
+**1. Pedir** — `POST /api/auth/password/forgot`
+
+```json
+{ "email": "maria@inventra.com" }
+```
+
+**202 Accepted**, sem corpo, **sempre**: a resposta é a mesma se o e-mail não tiver conta, se a conta estiver desativada ou se o limite de **5 pedidos por e-mail por hora** tiver sido atingido (nesses casos nada é enviado). Um pedido novo substitui o código anterior.
+
+**2. Verificar o código** (app, ou web sem o link) — `POST /api/auth/password/verify`
+
+```json
+{ "email": "maria@inventra.com", "code": "482915" }
+```
+
+**200 OK**
+
+```json
+{ "resetToken": "q3Jx8vZb...", "expiresInSeconds": 900 }
+```
+
+Código errado, expirado ou já usado: **400** com `code: INVALID_RESET_CODE`. Na **5ª tentativa errada** o código é apagado e é preciso pedir outro (mesma resposta 400).
+
+**3. Definir a nova senha** — `POST /api/auth/password/reset`
+
+```json
+{ "resetToken": "q3Jx8vZb...", "newPassword": "NovaSenha@456" }
+```
+
+`resetToken` é o devolvido pelo `verify` **ou** o parâmetro `token` do link.
+
+| Situação | Status | Corpo |
+|---|---|---|
+| Senha trocada | **204** | — |
+| Token inválido, expirado ou já usado | **400** | `code: INVALID_RESET_TOKEN` |
+| `newPassword` com menos de 8 caracteres | **400** | erro de validação |
+
+**Regras:**
+- Código e token valem **15 minutos** (`PASSWORD_RESET_TTL`) e **uma vez só**.
+- Trocar a senha encerra **todas as sessões**: access e refresh tokens emitidos antes deixam de valer, e é preciso logar de novo. Links e tokens de pedidos anteriores também deixam de valer.
+- Conta criada pelo login com Google (sem senha) pode usar o fluxo para criar uma senha.
+- Com o Redis fora do ar, os três endpoints respondem **503**.
+
+**Configuração:** `SENDGRID_API_KEY` e `MAIL_FROM` (remetente verificado no SendGrid). Sem a chave, a API não envia nada e escreve o e-mail no log, com o código: serve para testar localmente. O estado fica no Redis, nas chaves `inventra:password-reset:*` documentadas no `redis/docs/KEYSPACE.md` do repositório de banco.
 
 ---
 
