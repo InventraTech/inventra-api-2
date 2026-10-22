@@ -18,8 +18,9 @@
 10. [Inventários](#10-inventários)
 11. [Requisições](#11-requisições)
 12. [Alertas](#12-alertas)
-13. [Enums](#13-enums)
-14. [Códigos HTTP e erros](#14-códigos-http-e-erros)
+13. [Eventos de clique](#13-eventos-de-clique)
+14. [Enums](#14-enums)
+15. [Códigos HTTP e erros](#15-códigos-http-e-erros)
 
 ---
 
@@ -32,13 +33,13 @@
   - Preços → precisão `(12,2)`
 - **Escopo por cozinha:** todo usuário só acessa dados da própria `kitchen`. Endpoints com `kitchenId` no path/body/query validam contra `user.kitchen` → **403** se divergir; listagens sem `kitchenId` (`/kitchens`, `/stock-batches/low-stock`, `/stock-batches?productId=`, `/requisitions?status=`, `/requisitions?requesterId=`, `/products/{id}/kitchen-parameters`) devolvem só dados da cozinha do usuário (filtrados no banco).
 - Endpoints paginados aceitam `?page=0&size=20&sort=name,asc` e respondem no formato `Page<T>` do Spring (`content`, `totalElements`, `totalPages`, `pageable`, ...).
-- Todos os endpoints exigem `Authorization: Bearer <token>`, **exceto** `POST /api/auth/login`, `/register`, `/google`, `/refresh`, `/logout`, `GET /swagger-ui/**`, `GET /v3/api-docs/**`, `GET /actuator/health`.
+- Todos os endpoints exigem `Authorization: Bearer <token>` (inclusive o envio de cliques, 13.1), **exceto** `POST /api/auth/login`, `/register`, `/google`, `/refresh`, `/logout`, `GET /swagger-ui/**`, `GET /v3/api-docs/**`, `GET /actuator/health`.
 - Token inválido/expirado → **401**. Conta desativada (`active = false`) → **403** no login; tokens já emitidos param de valer na hora (**401**).
 - **Papéis (RBAC):** só existem `supervisor`, `estoquista` e `comprador` (`profile.accessType`, authority `ROLE_<ACCESS_TYPE>`). Chamar um endpoint fora do papel → **403**.
   - **Supervisor:** tudo.
   - **Estoquista:** lotes de estoque (`/api/stock-batches`: entrada, baixa, reposição, ajuste e consultas), histórico de movimentações (`/api/stock-movements`), inventários (`/api/inventories`) e o aviso de produto não cadastrado (12.7).
   - **Comprador:** requisições (`/api/requisitions`: criar, itens, submit, cancelar, listar). Aprovar/rejeitar é do supervisor.
-  - Qualquer usuário logado: `GET` de catálogo (produtos, categorias, unidades, fornecedores, cozinhas, perfis), descoberta de cozinhas (4.7), consultar e marcar como lidos os **próprios** alertas (12), ver/editar o próprio nome (`/api/users/{seuId}`) e trocar a própria senha.
+  - Qualquer usuário logado: `GET` de catálogo (produtos, categorias, unidades, fornecedores, cozinhas, perfis), descoberta de cozinhas (4.7), consultar e marcar como lidos os **próprios** alertas (12), enviar cliques (13.1), ver/editar o próprio nome (`/api/users/{seuId}`) e trocar a própria senha.
 - E-mail não diferencia maiúsculas/minúsculas (login e unicidade); é gravado em minúsculas.
 - `password_hash` nunca aparece em respostas — o `User` só expõe `id`, `name`, `email`, `kitchen`, `profile`, `active`, `hasPassword`, `lastLogin`, `createdAt`.
 
@@ -1343,7 +1344,80 @@ O estoquista escaneou um produto que não está no catálogo e não pode cadastr
 
 ---
 
-## 13. Enums
+## 13. Eventos de clique
+
+Contador de quantas vezes cada elemento clicável do web e do mobile foi clicado (`tb_ui_click_counter`, migration V014). O banco guarda só o total por elemento: não sabe quem clicou, quando nem em qual cozinha.
+
+Cada elemento é uma coluna do contador, com nome `tipo_plataforma_tela_nome` em inglês:
+
+- **Plataforma:** `wb` (web) ou `mb` (mobile).
+- **Tipo:** `bt` (botão), `nav` (item de navegação), `tab`, `toggle`, `chip`, `filter`, `radio`, `checkbox`, `link`, `fab`, `icon` (botão de ícone), `page` (paginação), `select` ou `card`.
+- **Exemplos:** `bt_wb_login_sign_in`, `nav_mb_global_stock`, `toggle_wb_accessibility_high_contrast`.
+
+A lista completa (300 elementos, com a descrição de cada um) está na V014 e no repositório de banco. Campo de digitação, touch/biometria de login e sliders não têm coluna.
+
+### 13.1 Enviar lote de cliques
+
+`POST /api/events/clicks` — qualquer usuário autenticado.
+
+O app acumula os cliques e envia em lote: cada lote vira um `UPDATE` só no banco, em vez de um por clique. Os cliques de antes do login (telas de login e cadastro) ficam guardados no app e vão no primeiro lote depois do login.
+
+```json
+{
+  "clicks": {
+    "bt_wb_login_sign_in": 2,
+    "nav_mb_global_stock": 5
+  }
+}
+```
+
+**Validações:** `clicks` obrigatório, com 1 a 500 elementos; cada quantidade de 1 a 10.000.
+
+**200 OK**
+
+```json
+{
+  "recordedElements": 2,
+  "recordedClicks": 7,
+  "ignored": []
+}
+```
+
+Elemento que não existe no contador (nome errado ou botão novo que ainda não ganhou coluna no banco) **não derruba o lote**: os demais são somados e ele volta em `ignored`, em ordem alfabética.
+
+**Erros:** **400** se o corpo for inválido (ex.: quantidade `0` → `errors[].field = "clicks[bt_wb_login_sign_in]"`); **401** sem token.
+
+### 13.2 Ranking de cliques
+
+`GET /api/events/clicks/ranking?platform=MOBILE` — só supervisor.
+
+Uma linha por elemento (`vw_ui_click_ranking`), ordenada por plataforma e posição. `platform` (`WEB` ou `MOBILE`) é opcional: sem ele, vêm as duas. Elemento sem cliques aparece com `0`, o que mostra botão que ninguém usa. O contador é global: o supervisor vê os totais de todas as cozinhas.
+
+**200 OK**
+
+```json
+[
+  {
+    "element": "nav_mb_global_stock",
+    "platform": "MOBILE",
+    "typeCode": "nav",
+    "description": "Cliques em «Estoque (caixa)» (item de navegação, tela GLOBAL, mobile).",
+    "clicks": 5,
+    "sharePct": 100.0,
+    "rankInPlatform": 1
+  }
+]
+```
+
+- `description` vem do catálogo de dados do banco (`null` se o elemento ainda não tiver metadado).
+- `sharePct` é a participação do elemento nos cliques da plataforma, com uma casa decimal; `null` enquanto a plataforma não tiver nenhum clique.
+- `rankInPlatform` usa `RANK()`: elementos empatados dividem a posição.
+
+**Erros:** **400** se `platform` não for `WEB` nem `MOBILE`; **403** para quem não é supervisor.
+
+---
+
+## 14. Enums
 
 ### `AccessType` (registro)
 
@@ -1393,9 +1467,13 @@ O estoquista escaneou um produto que não está no catálogo e não pode cadastr
 
 - `PENDING`, `APPROVED`, `REJECTED`
 
+### `UiClickPlatform`
+
+- `WEB`, `MOBILE`
+
 ---
 
-## 14. Códigos HTTP e erros
+## 15. Códigos HTTP e erros
 
 | Código | Uso |
 |:-------|:----|

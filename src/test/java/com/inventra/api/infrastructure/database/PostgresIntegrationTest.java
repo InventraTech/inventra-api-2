@@ -21,7 +21,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.transaction.annotation.Transactional;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
@@ -52,10 +51,15 @@ abstract class PostgresIntegrationTest {
 
     private static final String RAW_PASSWORD = "SenhaForte123";
 
-    // um container para todas as classes filhas: o contexto do Spring também é reaproveitado entre elas
-    @Container
+    // um container para todas as classes filhas: o contexto do Spring também é reaproveitado entre elas.
+    // Sem @Container de propósito: o JUnit pararia o container ao fim da primeira classe filha e o contexto
+    // em cache ficaria apontando para ele. Iniciado uma vez por JVM; o Ryuk do Testcontainers remove no fim.
     @ServiceConnection
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine");
+
+    static {
+        POSTGRES.start();
+    }
 
     @Autowired protected MockMvc mockMvc;
     @Autowired protected JdbcTemplate jdbc;

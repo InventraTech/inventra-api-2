@@ -128,6 +128,7 @@ Resumo:
 | Inventários        | `/api/inventories`     | Supervisor e estoquista — escopo por cozinha                       |
 | Requisições        | `/api/requisitions`    | Supervisor e comprador (aprovar/rejeitar: supervisor) — escopo por cozinha. Nasce `DRAFT`; `PATCH /{id}/submit` envia para análise |
 | Alertas            | `/api/alerts`          | Consultar e marcar como lido: qualquer usuário da cozinha, só os alertas dele — criar/deletar: supervisor — `POST /unregistered-product`: supervisor e estoquista |
+| Eventos de clique  | `/api/events/clicks`   | Enviar lote de cliques: qualquer usuário autenticado (o app guarda os cliques de antes do login e envia depois) — `GET /ranking`: supervisor; contador global, não por cozinha |
 | Swagger / OpenAPI  | `/swagger-ui/**`, `/v3/api-docs/**` | Público                                               |
 | Health             | `/actuator/health`     | Público                                                            |
 
@@ -147,7 +148,7 @@ Authorization: Bearer <token>
 - `password_hash` nunca aparece em respostas: o `User` só expõe `id`, `name`, `email`, `kitchen`, `profile`, `active`, `lastLogin`, `createdAt`.
 - Desativar a conta ou trocar a senha invalida na hora os tokens já emitidos (o token carrega o `id` do usuário e uma impressão digital da senha). Login com 5 senhas erradas seguidas (mesmo e-mail + IP) bloqueia por 15 minutos (**429**).
 - Os perfis base `supervisor`, `estoquista` e `comprador` não podem ser renomeados nem excluídos.
-- Erros seguem o padrão **`application/problem+json`** (RFC 7807) — detalhes por status em [`docs/docs.md` §14](docs/docs.md#14-códigos-http-e-erros).
+- Erros seguem o padrão **`application/problem+json`** (RFC 7807) — detalhes por status em [`docs/docs.md` §15](docs/docs.md#15-códigos-http-e-erros).
 
 ## Estrutura
 
