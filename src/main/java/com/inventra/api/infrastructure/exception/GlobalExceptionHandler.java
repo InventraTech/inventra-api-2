@@ -52,6 +52,12 @@ public class GlobalExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
     private static final String RAISE_EXCEPTION_SQL_STATE = "P0001";
 
+    @ExceptionHandler(RankingUnavailableException.class)
+    public ProblemDetail handleRankingUnavailable(RankingUnavailableException ex) {
+        log.warn("Falha ao consultar ranking de validade", ex);
+        return buildProblem(HttpStatus.SERVICE_UNAVAILABLE, "Service Unavailable", ex.getMessage());
+    }
+
     @ExceptionHandler(ResourceNotFoundException.class)
     public ProblemDetail handleResourceNotFound(ResourceNotFoundException ex) {
         return buildProblem(HttpStatus.NOT_FOUND, "Not Found", ex.getMessage());

@@ -2,19 +2,23 @@ package com.inventra.api.infrastructure.redis.queue;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import java.time.Duration;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
@@ -32,7 +36,7 @@ import com.inventra.api.infrastructure.exception.QueueServiceException;
 import tools.jackson.databind.json.JsonMapper;
 
 @ExtendWith(OutputCaptureExtension.class)
-@org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable(named = "REDIS_INTEGRATION_TESTS", matches = "(?i)true")
+@EnabledIfEnvironmentVariable(named = "REDIS_INTEGRATION_TESTS", matches = "(?i)true")
 class RedisProductRegistrationQueueTest {
     private static LettuceConnectionFactory factory;
     private static StringRedisTemplate redis;
@@ -42,9 +46,9 @@ class RedisProductRegistrationQueueTest {
 
     @BeforeAll
     static void connect() {
-        org.junit.jupiter.api.Assumptions.assumeTrue("true".equalsIgnoreCase(System.getenv("REDIS_INTEGRATION_TESTS")),
+        Assumptions.assumeTrue("true".equalsIgnoreCase(System.getenv("REDIS_INTEGRATION_TESTS")),
                 "Redis real exige REDIS_INTEGRATION_TESTS=true e ambiente dedicado de testes.");
-        org.junit.jupiter.api.Assumptions.assumeTrue(System.getenv("REDIS_HOST") != null && System.getenv("REDIS_PORT") != null,
+        Assumptions.assumeTrue(System.getenv("REDIS_HOST") != null && System.getenv("REDIS_PORT") != null,
                 "Configure REDIS_HOST e REDIS_PORT para testes de integração.");
         var server = new RedisStandaloneConfiguration(System.getenv("REDIS_HOST"),
                 Integer.parseInt(System.getenv("REDIS_PORT")));
@@ -177,7 +181,7 @@ class RedisProductRegistrationQueueTest {
         var processor = mock(ProductRegistrationProcessor.class);
         when(processor.process(any())).thenAnswer(invocation -> { queue.release(token); return 77; });
         var consumer = new ProductRegistrationConsumer(queue, processor, false);
-        org.junit.jupiter.api.Assertions.assertThrows(QueueServiceException.class,
+        assertThrows(QueueServiceException.class,
                 () -> consumer.process(queue.take(token), token));
         assertThat(redis.opsForZSet().size(prefix + ":pending")).isEqualTo(1);
         assertThat(redis.opsForList().size(prefix + ":errors")).isZero();
@@ -231,7 +235,7 @@ class RedisProductRegistrationQueueTest {
         assertThat(queue.acquire(token)).isTrue();
         queue.recover(token);
 
-        org.junit.jupiter.api.Assertions.assertThrows(QueueServiceException.class,
+        assertThrows(QueueServiceException.class,
                 () -> queue.recover("consumer-without-lease"));
         assertThat(queue.take(token)).isEqualTo(job.eventId());
     }
@@ -271,7 +275,7 @@ class RedisProductRegistrationQueueTest {
     }
 
     @Test void deadLetterHasBoundedSizeAndInactivityExpiry() {
-        redis.opsForList().leftPushAll(prefix + ":errors", java.util.Collections.nCopies(1000, "old"));
+        redis.opsForList().leftPushAll(prefix + ":errors", Collections.nCopies(1000, "old"));
         var job = job("7891234567890");
         queue.enqueue(job);
         assertThat(queue.acquire(token)).isTrue();

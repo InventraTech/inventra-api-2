@@ -51,6 +51,11 @@ class OpenApiDocsTest {
                 .andExpect(jsonPath("$.paths['/api/categories/{id}'].delete.responses['200']").doesNotExist())
                 .andExpect(jsonPath("$.paths['/api/products/barcode-registrations'].post.responses['202']").exists())
                 .andExpect(jsonPath("$.paths['/api/products/barcode-registrations'].post.responses['200']").doesNotExist())
-                .andExpect(jsonPath("$.paths['/api/products/barcode-registrations'].post.tags[0]").value("Produtos"));
+                .andExpect(jsonPath("$.paths['/api/products/barcode-registrations'].post.tags[0]").value("Produtos"))
+                .andExpect(jsonPath("$.paths['/api/stock-batches/ranking'].get.summary")
+                        .value("Consulta o ranking de lotes por validade"))
+                .andExpect(jsonPath("$.paths['/api/stock-batches/ranking'].get.tags[0]")
+                        .value("Lotes de estoque"))
+                .andExpect(jsonPath("$.paths['/api/stock-batches/ranking'].get.responses['503']").exists());
     }
 }

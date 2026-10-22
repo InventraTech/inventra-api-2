@@ -2,7 +2,9 @@ package com.inventra.api.infrastructure.redis;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import com.inventra.api.infrastructure.config.RedisConfig;
+import java.util.UUID;
+
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -10,14 +12,16 @@ import org.springframework.boot.data.redis.autoconfigure.DataRedisAutoConfigurat
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.data.redis.core.RedisTemplate;
 
+import com.inventra.api.infrastructure.config.RedisConfig;
+
 // Teste de integração contra um Redis real: só roda quando as credenciais estão no ambiente.
 @EnabledIfEnvironmentVariable(named = "REDIS_HOST", matches = ".+")
 class RedisConnectionTest {
 
     private ApplicationContextRunner contextRunner() {
-        org.junit.jupiter.api.Assumptions.assumeTrue("true".equalsIgnoreCase(System.getenv("REDIS_INTEGRATION_TESTS")),
+        Assumptions.assumeTrue("true".equalsIgnoreCase(System.getenv("REDIS_INTEGRATION_TESTS")),
                 "Redis real exige REDIS_INTEGRATION_TESTS=true e ambiente dedicado de testes.");
-        org.junit.jupiter.api.Assumptions.assumeTrue(System.getenv("REDIS_HOST") != null && System.getenv("REDIS_PORT") != null);
+        Assumptions.assumeTrue(System.getenv("REDIS_HOST") != null && System.getenv("REDIS_PORT") != null);
         return
             new ApplicationContextRunner()
                     .withConfiguration(
@@ -44,7 +48,7 @@ class RedisConnectionTest {
             RedisTemplate<String, Object> redisTemplate =
                     context.getBean("redisTemplate", RedisTemplate.class);
 
-            String key = "inventra:test:connection:" + java.util.UUID.randomUUID();
+            String key = "inventra:test:connection:" + UUID.randomUUID();
             String value = "redis-funcionando";
 
             redisTemplate.opsForValue().set(key, value);

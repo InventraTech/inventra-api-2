@@ -17,6 +17,10 @@ public interface KitchenRepository extends JpaRepository<Kitchen, Integer> {
 
     Optional<Kitchen> findByCodeIgnoreCase(String code);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select k from Kitchen k where k.id = :id")
+    Optional<Kitchen> lockForRanking(@Param("id") Integer id);
+
     boolean existsByCodeIgnoreCase(String code);
 
     // Serializa operações "verifica e cria" por cozinha (ex.: só um inventário OPEN por cozinha).
