@@ -72,9 +72,14 @@ CLOUDINARY_API_SECRET=
 
 # Login com Google (opcional): chave da conta de serviço do Firebase, o JSON puro ou em base64
 FIREBASE_CREDENTIALS_JSON=
+
+# E-mail da redefinição de senha (opcional em dev): SendGrid e remetente verificado nele
+SENDGRID_API_KEY=
+MAIL_FROM=
+PASSWORD_RESET_WEB_URL=http://localhost:3000/redefinir-senha
 ```
 
-A lista completa, com os valores padrão, está em [`.env.example`](.env.example). A chave do Firebase **nunca** vai para o repositório; sem ela a API sobe normalmente e só `POST /api/auth/google` responde **503**.
+A lista completa, com os valores padrão, está em [`.env.example`](.env.example). A chave do Firebase **nunca** vai para o repositório; sem ela a API sobe normalmente e só `POST /api/auth/google` responde **503**. O mesmo vale para a chave do SendGrid: sem ela, os e-mails de redefinição de senha não são enviados, só aparecem no log (com o código), o que basta para testar localmente.
 
 Uploads são limitados a **5 MB** por arquivo/request (`spring.servlet.multipart.max-file-size`).
 
@@ -114,7 +119,7 @@ Resumo:
 
 | Recurso            | Base path              | Acesso                                                             |
 |:-------------------|:-----------------------|:-------------------------------------------------------------------|
-| Autenticação       | `/api/auth`            | `POST /login`, `/register`, `/google`, `/refresh` e `/logout` públicos |
+| Autenticação       | `/api/auth`            | `POST /login`, `/register`, `/google`, `/refresh`, `/logout` e `/password/forgot`, `/password/verify`, `/password/reset` públicos |
 | Usuários           | `/api/users`           | Supervisor (criar/listar/ativar/desativar); cada um edita o próprio nome e senha |
 | Perfis             | `/api/profiles`        | Leitura: autenticado — escrita: supervisor                         |
 | Cozinhas           | `/api/kitchens`        | Leitura: autenticado — escrita: supervisor; escopo por cozinha. `GET /discover` lista as cozinhas abertas a pedidos de entrada (qualquer usuário autenticado) |
