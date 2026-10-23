@@ -17,6 +17,8 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import com.inventra.api.core.service.auth.RefreshTokenData;
 import com.inventra.api.core.service.kitchenaccess.KitchenAccessRequest;
 import com.inventra.api.core.service.kitchenaccess.KitchenAccessRequestStatus;
+import com.inventra.api.core.service.passwordreset.PasswordResetStore;
+import com.inventra.api.core.service.passwordreset.ResetTokenData;
 
 // Exercita as implementações de Redis de verdade. Só roda se houver um Redis em REDIS_TEST_HOST:REDIS_TEST_PORT
 // (padrão localhost:6379), por exemplo: docker run -d -p 6379:6379 redis:7. Sem Redis, é pulado.
@@ -99,6 +101,43 @@ class RedisStoresTest {
         assertThat(decided.reason()).isNull();
         // decidido não expira mais: vira histórico
         assertThat(redis.getExpire("kar:" + request.id())).isEqualTo(-1L);
+    }
+
+    @Test
+    void passwordResetStoreFollowsTheKeyspaceContract() {
+        RedisPasswordResetStore store = new RedisPasswordResetStore(redis);
+        UUID userId = UUID.randomUUID();
+        String emailHash = "email-" + UUID.randomUUID();
+
+        // contador de pedidos nasce com TTL e conta a janela
+        assertThat(store.countRequest(emailHash, Duration.ofHours(1))).isEqualTo(1);
+        assertThat(store.countRequest(emailHash, Duration.ofHours(1))).isEqualTo(2);
+        assertThat(redis.getExpire(RedisPasswordResetStore.REQUESTS_PREFIX + emailHash)).isPositive();
+
+        // código: tentativa errada conta, a certa consome
+        store.saveCode(userId, "certo", Duration.ofMinutes(15));
+        assertThat(redis.getExpire(RedisPasswordResetStore.CODE_PREFIX + userId)).isPositive();
+        assertThat(store.checkCode(userId, "errado", 3)).isEqualTo(PasswordResetStore.CodeCheck.MISMATCH);
+        assertThat(store.checkCode(userId, "certo", 3)).isEqualTo(PasswordResetStore.CodeCheck.MATCH);
+        assertThat(store.checkCode(userId, "certo", 3)).isEqualTo(PasswordResetStore.CodeCheck.MISSING);
+
+        // código: na última tentativa errada é apagado
+        store.saveCode(userId, "certo", Duration.ofMinutes(15));
+        assertThat(store.checkCode(userId, "errado", 2)).isEqualTo(PasswordResetStore.CodeCheck.MISMATCH);
+        assertThat(store.checkCode(userId, "errado", 2)).isEqualTo(PasswordResetStore.CodeCheck.EXHAUSTED);
+        assertThat(redis.hasKey(RedisPasswordResetStore.CODE_PREFIX + userId)).isFalse();
+        // conferir um código que não existe não recria a chave (que ficaria sem TTL)
+        assertThat(store.checkCode(userId, "certo", 2)).isEqualTo(PasswordResetStore.CodeCheck.MISSING);
+        assertThat(redis.hasKey(RedisPasswordResetStore.CODE_PREFIX + userId)).isFalse();
+
+        // token: lido e apagado de uma vez
+        String tokenHash = "token-" + UUID.randomUUID();
+        store.saveToken(tokenHash, new ResetTokenData(userId.toString(), "fp"), Duration.ofMinutes(15));
+        assertThat(redis.getExpire(RedisPasswordResetStore.TOKEN_PREFIX + tokenHash)).isPositive();
+        assertThat(store.consumeToken(tokenHash)).contains(new ResetTokenData(userId.toString(), "fp"));
+        assertThat(store.consumeToken(tokenHash)).isEmpty();
+
+        redis.delete(RedisPasswordResetStore.REQUESTS_PREFIX + emailHash);
     }
 
     @Test
