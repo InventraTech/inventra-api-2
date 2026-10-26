@@ -1,0 +1,82 @@
+name: "Sync migrations"
+
+# Copia as migrations do repo do banco (fonte da verdade) para a API e abre um PR
+# quando houver diferença. Roda todo dia, na mão ou via repository_dispatch
+# (tipo "database-migrations-changed") disparado pelo repo do banco.
+on:
+  schedule:
+    - cron: "0 9 * * *"
+  workflow_dispatch:
+  repository_dispatch:
+    types: [database-migrations-changed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  DATABASE_REPO: InventraTech/inventra-database-2
+  MIGRATIONS_SOURCE: postgre/migrations
+  MIGRATIONS_TARGET: src/main/resources/db/migration
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout da API
+        uses: actions/checkout@v4
+
+      - name: Checkout do repo do banco
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.DATABASE_REPO }}
+          ref: main
+          path: database
+
+      # O repo do banco guarda CRLF; aqui o git normaliza para LF. Sem converter, toda
+      # migration apareceria como modificada. O checksum do Flyway ignora a quebra de linha.
+      - name: Copiar migrations
+        run: |
+          for f in database/${MIGRATIONS_SOURCE}/V*.sql; do
+            sed 's/\r$//' "$f" > "${MIGRATIONS_TARGET}/$(basename "$f")"
+          done
+
+      - name: Abrir PR se houver diferença
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -z "$(git status --porcelain -- "$MIGRATIONS_TARGET")" ]; then
+            echo "Migrations já estão em dia."
+            exit 0
+          fi
+
+          db_sha=$(git -C database rev-parse --short HEAD)
+          branch="chore/sync-migrations-${db_sha}"
+
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+            echo "Branch $branch já existe; PR já foi aberto para este commit do banco."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add "$MIGRATIONS_TARGET"
+          git commit -m "chore: sync migrations with the database repo (${db_sha})"
+          git push origin "$branch"
+
+          changed=$(git diff --name-status HEAD~1 -- "$MIGRATIONS_TARGET" | sed 's/^/- /')
+          gh pr create \
+            --base main \
+            --head "$branch" \
+            --title "chore: sincronizar migrations com o repo do banco (${db_sha})" \
+            --body "## Descrição
+          Migrations copiadas de [${DATABASE_REPO}](https://github.com/${DATABASE_REPO}/commit/$(git -C database rev-parse HEAD)) (\`${MIGRATIONS_SOURCE}\`).
+
+          ## Arquivos alterados
+          ${changed}
+
+          ## Observações
+          - Aberto automaticamente pelo workflow \`sync-migrations\`.
+          - Arquivo já publicado que aparece como modificado (\`M\`) merece atenção: o Flyway rejeita migration alterada em banco que já a aplicou.
+          - Conferir se as entidades JPA precisam de ajuste (\`ddl-auto=validate\`)."
