@@ -10,7 +10,7 @@ public record PreListItemResponse(
         SupplierSummary supplier,
         BigDecimal quantity
 ) {
-    public record ProductSummary(Integer id, String name) {
+    public record ProductSummary(Integer id, String name, String photoUrl) {
     }
 
     public record SupplierSummary(Integer id, String legalName) {
@@ -19,7 +19,8 @@ public record PreListItemResponse(
     public static PreListItemResponse fromEntity(PreListItem item) {
         return new PreListItemResponse(
                 item.getId(),
-                new ProductSummary(item.getProduct().getId(), item.getProduct().getName()),
+                new ProductSummary(item.getProduct().getId(), item.getProduct().getName(),
+                        item.getProduct().getPhotoUrl()),
                 new SupplierSummary(item.getSupplier().getId(), item.getSupplier().getLegalName()),
                 item.getQuantity()
         );

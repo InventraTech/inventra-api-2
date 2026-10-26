@@ -20,7 +20,7 @@ public record StockBatchResponse(
         BigDecimal unitPrice,
         StockBatchStatus status
 ) {
-    public record ProductSummary(Integer id, String name) {
+    public record ProductSummary(Integer id, String name, String photoUrl) {
     }
 
     public record KitchenSummary(Integer id, String name) {
@@ -36,7 +36,8 @@ public record StockBatchResponse(
 
         return new StockBatchResponse(
                 batch.getId(),
-                new ProductSummary(batch.getProduct().getId(), batch.getProduct().getName()),
+                new ProductSummary(batch.getProduct().getId(), batch.getProduct().getName(),
+                        batch.getProduct().getPhotoUrl()),
                 new KitchenSummary(batch.getKitchen().getId(), batch.getKitchen().getName()),
                 supplier,
                 batch.getBatchNumber(),

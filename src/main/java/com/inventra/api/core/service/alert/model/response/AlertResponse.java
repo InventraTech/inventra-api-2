@@ -24,7 +24,7 @@ public record AlertResponse(
     public record BatchSummary(Integer id, String batchNumber) {
     }
 
-    public record ProductSummary(Integer id, String name) {
+    public record ProductSummary(Integer id, String name, String photoUrl) {
     }
 
     public record KitchenSummary(Integer id, String name) {
@@ -43,7 +43,8 @@ public record AlertResponse(
                 ? new BatchSummary(alert.getBatch().getId(), alert.getBatch().getBatchNumber())
                 : null;
         var product = alert.getProduct() != null
-                ? new ProductSummary(alert.getProduct().getId(), alert.getProduct().getName())
+                ? new ProductSummary(alert.getProduct().getId(), alert.getProduct().getName(),
+                        alert.getProduct().getPhotoUrl())
                 : null;
 
         return new AlertResponse(

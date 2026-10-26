@@ -12,7 +12,7 @@ public record RequisitionItemResponse(
         SupplierSummary suggestedSupplier,
         String note
 ) {
-    public record ProductSummary(Integer id, String name) {
+    public record ProductSummary(Integer id, String name, String photoUrl) {
     }
 
     public record SupplierSummary(Integer id, String legalName) {
@@ -25,7 +25,8 @@ public record RequisitionItemResponse(
 
         return new RequisitionItemResponse(
                 item.getId(),
-                new ProductSummary(item.getProduct().getId(), item.getProduct().getName()),
+                new ProductSummary(item.getProduct().getId(), item.getProduct().getName(),
+                        item.getProduct().getPhotoUrl()),
                 item.getQuantity(),
                 item.getEstimatedPrice(),
                 suggestedSupplier,

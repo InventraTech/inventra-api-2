@@ -27,7 +27,7 @@ public record StockMovementResponse(
     public record BatchSummary(Integer id, String batchNumber) {
     }
 
-    public record ProductSummary(Integer id, String name) {
+    public record ProductSummary(Integer id, String name, String photoUrl) {
     }
 
     public record UserSummary(UUID id, String name, String photoUrl) {
@@ -47,7 +47,8 @@ public record StockMovementResponse(
                 movement.getQuantity(),
                 movement.getBalanceAfter(),
                 new BatchSummary(batch.getId(), batch.getBatchNumber()),
-                new ProductSummary(batch.getProduct().getId(), batch.getProduct().getName()),
+                new ProductSummary(batch.getProduct().getId(), batch.getProduct().getName(),
+                        batch.getProduct().getPhotoUrl()),
                 user,
                 movement.getRequisition() != null ? movement.getRequisition().getId() : null,
                 movement.getCreatedAt()
