@@ -116,14 +116,58 @@ class PreListEndpointsIntegrationTest {
     }
 
     @Test
+    void listFiltersByKitchenOfTheLoggedUser() throws Exception {
+        Kitchen own = newKitchen();
+        Kitchen other = newKitchen();
+        PreList ownList = preListRepository.saveAndFlush(
+                PreList.builder().listDate(LocalDate.of(2026, 10, 20)).kitchen(own).build());
+        preListRepository.saveAndFlush(PreList.builder().listDate(LocalDate.of(2026, 10, 21)).kitchen(other).build());
+        preListRepository.saveAndFlush(PreList.builder().listDate(LocalDate.of(2026, 10, 22)).build());
+        String token = bearer("comprador", own);
+
+        mockMvc.perform(get("/api/pre-lists").param("kitchenId", own.getId().toString())
+                        .header(HttpHeaders.AUTHORIZATION, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].id").value(ownList.getId()))
+                .andExpect(jsonPath("$[0].kitchenId").value(own.getId()));
+    }
+
+    @Test
+    void listWithKitchenOfAnotherUserIsForbidden() throws Exception {
+        Kitchen other = newKitchen();
+
+        mockMvc.perform(get("/api/pre-lists").param("kitchenId", other.getId().toString())
+                        .header(HttpHeaders.AUTHORIZATION, bearer("comprador", newKitchen())))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void preListOfAnotherKitchenIsForbidden() throws Exception {
+        PreList preList = preListRepository.saveAndFlush(
+                PreList.builder().listDate(LocalDate.of(2026, 10, 20)).kitchen(newKitchen()).build());
+
+        mockMvc.perform(get("/api/pre-lists/" + preList.getId())
+                        .header(HttpHeaders.AUTHORIZATION, bearer("supervisor", newKitchen())))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void estoquistaCannotReadPreLists() throws Exception {
         mockMvc.perform(get("/api/pre-lists").header(HttpHeaders.AUTHORIZATION, bearer("estoquista")))
                 .andExpect(status().isForbidden());
     }
 
-    private String bearer(String accessType) throws Exception {
-        Kitchen kitchen = kitchenRepository.saveAndFlush(Kitchen.builder()
+    private Kitchen newKitchen() {
+        return kitchenRepository.saveAndFlush(Kitchen.builder()
                 .name("Cozinha Teste").code("K-" + UUID.randomUUID().toString().substring(0, 8)).build());
+    }
+
+    private String bearer(String accessType) throws Exception {
+        return bearer(accessType, newKitchen());
+    }
+
+    private String bearer(String accessType, Kitchen kitchen) throws Exception {
         Profile profile = profileRepository.findByAccessType(accessType)
                 .orElseGet(() -> profileRepository.saveAndFlush(Profile.builder().accessType(accessType).build()));
         User user = userRepository.saveAndFlush(User.builder()

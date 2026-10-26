@@ -9,8 +9,8 @@ public interface PreListUseCase {
 
     PreList findById(Integer id);
 
-    // da mais recente para a mais antiga
-    List<PreList> list();
+    // da mais recente para a mais antiga; com kitchenId, só as listas dessa cozinha (exige acesso a ela)
+    List<PreList> list(Integer kitchenId);
 
     List<PreListItem> listItems(Integer preListId);
 }

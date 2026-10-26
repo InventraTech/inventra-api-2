@@ -23,11 +23,13 @@ public class PreListController {
     private final PreListUseCase useCase;
 
     @Operation(summary = "Lista as pré-listas, da mais recente para a mais antiga",
-            description = "Só o cabeçalho (data e origem); os itens vêm em GET /api/pre-lists/{id}.")
+            description = "Só o cabeçalho (data, origem e cozinha); os itens vêm em GET /api/pre-lists/{id}. "
+                    + "Com kitchenId, devolve só as listas dessa cozinha (precisa ser a do usuário logado); "
+                    + "sem kitchenId, devolve todas, inclusive as importadas sem cozinha.")
     @PreAuthorize(Roles.REQUISITION)
     @GetMapping
-    public ResponseEntity<List<PreListResponse>> list() {
-        List<PreListResponse> responses = useCase.list().stream()
+    public ResponseEntity<List<PreListResponse>> list(@RequestParam(required = false) Integer kitchenId) {
+        List<PreListResponse> responses = useCase.list(kitchenId).stream()
                 .map(PreListResponse::summary)
                 .toList();
         return ResponseEntity.ok(responses);
