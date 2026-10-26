@@ -12,7 +12,7 @@ public record LowStockAlertResponse(
         BigDecimal minStock
 ) {
 
-    public record ProductSummary(Integer id, String name, UnitSummary unit) {
+    public record ProductSummary(Integer id, String name, String photoUrl, UnitSummary unit) {
     }
 
     public record UnitSummary(Integer id, String symbol) {
@@ -26,7 +26,7 @@ public record LowStockAlertResponse(
         return new LowStockAlertResponse(
                 kitchenId,
                 product.getId(),
-                new ProductSummary(product.getId(), product.getName(), unit),
+                new ProductSummary(product.getId(), product.getName(), product.getPhotoUrl(), unit),
                 currentQuantity,
                 minStock);
     }
