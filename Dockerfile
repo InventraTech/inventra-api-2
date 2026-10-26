@@ -7,7 +7,7 @@ COPY src ./src
 RUN mvn -q -DskipTests package
 
 # Runtime: só o JRE + o jar
-FROM eclipse-temurin:21-jre
+FROM eclipse-temurin:21-jre-noble
 # Roda sem root: se a aplicação for comprometida, o processo não tem privilégio no container
 RUN groupadd --system app && useradd --system --gid app --no-create-home app
 WORKDIR /app

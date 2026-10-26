@@ -39,4 +39,20 @@ class OpenApiDocsTest {
                 .andExpect(jsonPath("$.paths['/api/auth/login'].post.responses['401']").exists())
                 .andExpect(jsonPath("$.components.schemas.CreateCategoryRequest.properties.name.example").value("Grãos"));
     }
+
+    // springdoc assume 200 para ResponseEntity; os @ApiResponse dos controllers documentam o código real.
+    @Test
+    void apiDocsDescribeActualSuccessStatusCodes() throws Exception {
+        mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paths['/api/categories'].post.responses['201'].content").exists())
+                .andExpect(jsonPath("$.paths['/api/categories'].post.responses['200']").doesNotExist())
+                .andExpect(jsonPath("$.paths['/api/categories/{id}'].delete.responses['204']").exists())
+                .andExpect(jsonPath("$.paths['/api/categories/{id}'].delete.responses['200']").doesNotExist())
+                .andExpect(jsonPath("$.paths['/api/stock-batches/ranking'].get.summary")
+                        .value("Consulta o ranking de lotes por validade"))
+                .andExpect(jsonPath("$.paths['/api/stock-batches/ranking'].get.tags[0]")
+                        .value("Lotes de estoque"))
+                .andExpect(jsonPath("$.paths['/api/stock-batches/ranking'].get.responses['503']").exists());
+    }
 }

@@ -133,6 +133,19 @@ class AuthorizationRulesIntegrationTest {
                 .andExpect(status().isConflict());
     }
 
+    // ===== Lotes de estoque =====
+
+    @Test
+    void compradorCannotReadStockRanking() throws Exception {
+        Kitchen kitchen = newKitchen();
+        User buyer = newUser("comprador", kitchen);
+
+        mockMvc.perform(get("/api/stock-batches/ranking")
+                        .param("kitchenId", kitchen.getId().toString())
+                        .header(HttpHeaders.AUTHORIZATION, bearer(login(buyer.getEmail()))))
+                .andExpect(status().isForbidden());
+    }
+
     // ===== Requisições =====
 
     @Test

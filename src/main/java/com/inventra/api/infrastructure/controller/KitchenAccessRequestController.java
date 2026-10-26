@@ -24,6 +24,7 @@ import com.inventra.api.core.service.kitchenaccess.model.response.KitchenAccessR
 import com.inventra.api.infrastructure.security.Roles;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -38,6 +39,7 @@ public class KitchenAccessRequestController {
 
     // qualquer usuário autenticado sem cozinha
     @Operation(summary = "Solicita entrada em uma cozinha, pelo id (descoberta) ou pelo código de convite")
+    @ApiResponse(responseCode = "201", description = "Recurso criado")
     @PostMapping
     public ResponseEntity<KitchenAccessRequestResponse> request(@Valid @RequestBody CreateKitchenAccessRequest body) {
         KitchenAccessRequestResponse response = toResponse(service.request(body.code(), body.kitchenId()));

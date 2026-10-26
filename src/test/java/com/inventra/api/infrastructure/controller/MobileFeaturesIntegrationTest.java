@@ -53,7 +53,8 @@ import com.inventra.api.infrastructure.repository.UserRepository;
 
 // Segunda leva de pedidos do time mobile: login com Google, descoberta de cozinhas, notificações por pessoa,
 // rascunho de requisição, movimentações de estoque e consulta por código de barras. As procedures só existem
-// no Postgres: aqui (H2) ficam os fluxos que não passam por elas.
+// no Postgres: aqui (H2) ficam os fluxos que não passam por elas; as que passam estão no
+// DatabaseRoutinesIntegrationTest.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")

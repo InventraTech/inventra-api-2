@@ -11,6 +11,8 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -73,8 +75,8 @@ class JwtAuthenticationIntegrationTest {
     @Autowired
     private KitchenRepository kitchenRepository;
 
-    @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(strings = {"comprador", "estoquista"})
+    @ParameterizedTest
+    @ValueSource(strings = {"comprador", "estoquista"})
     void restrictedRolesCannotCreateProducts(String role) throws Exception {
         Profile roleProfile = profileRepository.findByAccessType(role).orElseGet(
                 () -> profileRepository.saveAndFlush(Profile.builder().accessType(role).build()));

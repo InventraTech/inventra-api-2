@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.inventra.api.core.domain.stock.StockBatch;
 import com.inventra.api.core.domain.stock.enums.StockBatchStatus;
 import com.inventra.api.core.domain.supplier.Supplier;
+import com.inventra.api.core.service.ranking.RankingCandidate;
 
 import jakarta.persistence.LockModeType;
 
@@ -27,6 +28,14 @@ public interface StockBatchRepository extends JpaRepository<StockBatch, Integer>
 
     @EntityGraph(attributePaths = {"product", "kitchen", "supplier"})
     List<StockBatch> findByKitchenIdAndProductId(Integer kitchenId, Integer productId);
+
+    @Query("""
+            select new com.inventra.api.core.service.ranking.RankingCandidate(b.id, b.expirationDate)
+            from StockBatch b
+            where b.kitchen.id = :kitchenId and b.status = com.inventra.api.core.domain.stock.enums.StockBatchStatus.ACTIVE
+              and b.currentQuantity > 0 and b.expirationDate is not null
+            """)
+    List<RankingCandidate> findRankingCandidates(@Param("kitchenId") Integer kitchenId);
 
     @EntityGraph(attributePaths = {"product", "kitchen", "supplier"})
     List<StockBatch> findByKitchenIdAndStatusAndExpirationDateBetween(

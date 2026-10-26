@@ -19,6 +19,7 @@ import com.inventra.api.core.service.stockbatch.model.response.KitchenStockItemR
 import com.inventra.api.infrastructure.security.Roles;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +34,7 @@ public class KitchenController {
     private final StockBatchUseCase stockBatchUseCase;
 
     @Operation(summary = "Cria uma cozinha")
+    @ApiResponse(responseCode = "201", description = "Recurso criado")
     @PreAuthorize(Roles.SUPERVISOR)
     @PostMapping
     public ResponseEntity<KitchenResponse> create(@Valid @RequestBody CreateKitchenRequest request) {
@@ -98,6 +100,7 @@ public class KitchenController {
     }
 
     @Operation(summary = "Ativa uma cozinha")
+    @ApiResponse(responseCode = "204", description = "Operação concluída, sem corpo na resposta")
     @PreAuthorize(Roles.SUPERVISOR)
     @PatchMapping("/{id}/activate")
     public ResponseEntity<Void> activate(@PathVariable Integer id) {
@@ -106,6 +109,7 @@ public class KitchenController {
     }
 
     @Operation(summary = "Desativa uma cozinha")
+    @ApiResponse(responseCode = "204", description = "Operação concluída, sem corpo na resposta")
     @PreAuthorize(Roles.SUPERVISOR)
     @PatchMapping("/{id}/deactivate")
     public ResponseEntity<Void> deactivate(@PathVariable Integer id) {

@@ -22,6 +22,7 @@ import com.inventra.api.core.service.requisition.model.response.RequisitionRespo
 import com.inventra.api.infrastructure.security.Roles;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -36,6 +37,7 @@ public class RequisitionController {
     private final RequisitionUseCase useCase;
 
     @Operation(summary = "Cria uma requisição em rascunho (DRAFT)")
+    @ApiResponse(responseCode = "201", description = "Recurso criado")
     @PostMapping
     public ResponseEntity<RequisitionResponse> create(@Valid @RequestBody CreateRequisitionRequest request) {
         RequisitionResponse response = toResponse(useCase.create(request));

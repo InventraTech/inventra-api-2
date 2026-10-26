@@ -40,7 +40,7 @@ import com.inventra.api.infrastructure.repository.UserRepository;
 
 // CRUD pela API de ponta a ponta (controller + validação + service + JPA + tratamento de erros) com um
 // supervisor logado. As chamadas que disparam procedures do Postgres (aprovar requisição, baixa, fechar
-// inventário) não rodam no H2 e ficam de fora.
+// inventário) não rodam no H2: ficam no DatabaseRoutinesIntegrationTest, contra um Postgres de verdade.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")

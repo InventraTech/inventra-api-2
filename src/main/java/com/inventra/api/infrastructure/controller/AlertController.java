@@ -14,6 +14,7 @@ import com.inventra.api.core.service.alert.model.response.AlertResponse;
 import com.inventra.api.infrastructure.security.Roles;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +32,7 @@ public class AlertController {
     @Operation(summary = "Avisa o supervisor que um produto escaneado não está no catálogo",
             description = "Cria um alerta UNREGISTERED_PRODUCT para os supervisores da cozinha. Se já existe um "
                     + "aviso aberto para o mesmo código, devolve o existente (200) em vez de criar outro (201).")
+    @ApiResponse(responseCode = "201", description = "Recurso criado")
     @PreAuthorize(Roles.STOCK)
     @PostMapping("/unregistered-product")
     public ResponseEntity<AlertResponse> reportUnregisteredProduct(
@@ -67,6 +69,7 @@ public class AlertController {
     }
 
     @Operation(summary = "Marca como lidos todos os alertas do usuário logado na cozinha")
+    @ApiResponse(responseCode = "204", description = "Operação concluída, sem corpo na resposta")
     @PatchMapping("/read-all")
     public ResponseEntity<Void> markAllAsRead(@RequestParam Integer kitchenId) {
         useCase.markAllAsRead(kitchenId);
