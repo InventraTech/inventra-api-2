@@ -7,10 +7,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
-import com.inventra.api.core.domain.alert.Alert;
 import com.inventra.api.core.service.alert.AlertUseCase;
 import com.inventra.api.core.service.alert.AlertView;
-import com.inventra.api.core.service.alert.model.request.CreateAlertRequest;
 import com.inventra.api.core.service.alert.model.request.ReportUnregisteredProductRequest;
 import com.inventra.api.core.service.alert.model.response.AlertResponse;
 import com.inventra.api.infrastructure.security.Roles;
@@ -29,15 +27,6 @@ import lombok.RequiredArgsConstructor;
 public class AlertController {
 
     private final AlertUseCase useCase;
-
-    @Operation(summary = "Cria um alerta manualmente")
-    @PreAuthorize(Roles.SUPERVISOR)
-    @PostMapping
-    public ResponseEntity<AlertResponse> create(@Valid @RequestBody CreateAlertRequest request) {
-        Alert created = useCase.create(request);
-        AlertResponse response = AlertResponse.fromEntity(created);
-        return ResponseEntity.created(URI.create("/api/alerts/" + response.id())).body(response);
-    }
 
     @Operation(summary = "Avisa o supervisor que um produto escaneado não está no catálogo",
             description = "Cria um alerta UNREGISTERED_PRODUCT para os supervisores da cozinha. Se já existe um "
@@ -81,14 +70,6 @@ public class AlertController {
     @PatchMapping("/read-all")
     public ResponseEntity<Void> markAllAsRead(@RequestParam Integer kitchenId) {
         useCase.markAllAsRead(kitchenId);
-        return ResponseEntity.noContent().build();
-    }
-
-    @Operation(summary = "Exclui um alerta")
-    @PreAuthorize(Roles.SUPERVISOR)
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Integer id) {
-        useCase.delete(id);
         return ResponseEntity.noContent().build();
     }
 }

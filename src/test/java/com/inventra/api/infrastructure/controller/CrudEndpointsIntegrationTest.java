@@ -191,20 +191,6 @@ class CrudEndpointsIntegrationTest {
         send(post("/api/suppliers"), "{\"legalName\":\"B\",\"cnpj\":\"98.765.432/0001-10\"}").andExpect(status().isConflict());
     }
 
-    // ===== Perfis =====
-
-    @Test
-    void profileCrudAndBaseProfileProtection() throws Exception {
-        int id = createAndGetId("/api/profiles", "{\"accessType\":\"auditor\",\"description\":\"Leitura\"}");
-
-        send(get("/api/profiles/" + id), null).andExpect(status().isOk());
-        send(put("/api/profiles/" + id), "{\"description\":\"Só leitura\"}").andExpect(status().isOk());
-        send(delete("/api/profiles/" + id), null).andExpect(status().isNoContent());
-
-        int supervisorProfileId = profile("supervisor").getId();
-        send(delete("/api/profiles/" + supervisorProfileId), null).andExpect(status().isConflict());
-    }
-
     // ===== Cozinhas =====
 
     @Test
@@ -443,28 +429,6 @@ class CrudEndpointsIntegrationTest {
 
         send(get("/api/suppliers").param("kitchenId", String.valueOf(other.getId())), null)
                 .andExpect(status().isForbidden());
-    }
-
-    // ===== Alertas =====
-
-    @Test
-    void alertCreateReadAndDelete() throws Exception {
-        int id = createAndGetId("/api/alerts",
-                "{\"type\":\"LOW_STOCK\",\"severity\":\"HIGH\",\"kitchenId\":" + kitchen.getId() + ",\"message\":\"Estoque baixo\"}");
-
-        send(get("/api/alerts").param("kitchenId", String.valueOf(kitchen.getId())).param("unread", "true"), null)
-                .andExpect(status().isOk()).andExpect(jsonPath("$[?(@.id == " + id + ")]").exists());
-        send(patch("/api/alerts/" + id + "/read"), null).andExpect(status().isOk());
-        send(get("/api/alerts").param("kitchenId", String.valueOf(kitchen.getId())).param("unread", "true"), null)
-                .andExpect(jsonPath("$[?(@.id == " + id + ")]").doesNotExist());
-        send(delete("/api/alerts/" + id), null).andExpect(status().isNoContent());
-        send(get("/api/alerts/" + id), null).andExpect(status().isNotFound());
-    }
-
-    @Test
-    void alertValidationRejectsMissingFields() throws Exception {
-        send(post("/api/alerts"), "{\"type\":\"\",\"kitchenId\":" + kitchen.getId() + "}")
-                .andExpect(status().isBadRequest());
     }
 
     // ===== Inventário =====

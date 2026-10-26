@@ -50,7 +50,7 @@ public class SecurityConfig {
                         "/api/auth/google").permitAll()
                 .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                 .requestMatchers("/actuator/health", "/actuator/health/liveness", "/actuator/health/readiness").permitAll()
-                .requestMatchers(HttpMethod.POST, "/api/products", "/api/products/barcode-registrations")
+                .requestMatchers(HttpMethod.POST, "/api/products")
                     .hasAnyRole("ADMIN", "SUPERVISOR")
                 .anyRequest().authenticated())
             .exceptionHandling(ex -> ex
