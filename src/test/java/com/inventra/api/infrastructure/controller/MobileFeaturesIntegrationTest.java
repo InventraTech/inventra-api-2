@@ -33,6 +33,8 @@ import org.springframework.transaction.annotation.Transactional;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.inventra.api.core.domain.alert.Alert;
+import com.inventra.api.core.domain.alert.enums.AlertSeverity;
 import com.inventra.api.core.domain.kitchen.Kitchen;
 import com.inventra.api.core.domain.product.Product;
 import com.inventra.api.core.domain.profile.Profile;
@@ -41,6 +43,7 @@ import com.inventra.api.core.domain.unit.Unit;
 import com.inventra.api.core.domain.user.User;
 import com.inventra.api.infrastructure.client.openfoodfacts.OpenFoodFactsClient;
 import com.inventra.api.infrastructure.client.openfoodfacts.model.OpenFoodFactsProduct;
+import com.inventra.api.infrastructure.repository.AlertRepository;
 import com.inventra.api.infrastructure.repository.KitchenRepository;
 import com.inventra.api.infrastructure.repository.ProductRepository;
 import com.inventra.api.infrastructure.repository.ProfileRepository;
@@ -80,6 +83,9 @@ class MobileFeaturesIntegrationTest {
 
     @Autowired
     private StockBatchRepository stockBatchRepository;
+
+    @Autowired
+    private AlertRepository alertRepository;
 
     @Autowired
     private PasswordEncoder passwordEncoder;
@@ -309,8 +315,8 @@ class MobileFeaturesIntegrationTest {
         String stockistToken = login(newUser("estoquista", kitchen).getEmail());
         String kitchenId = String.valueOf(kitchen.getId());
 
-        int first = createAlert(supervisorToken, kitchen, "Estoque de arroz baixo");
-        createAlert(supervisorToken, kitchen, "Estoque de feijão baixo");
+        int first = createAlert(kitchen, "Estoque de arroz baixo");
+        createAlert(kitchen, "Estoque de feijão baixo");
 
         send(patch("/api/alerts/" + first + "/read"), stockistToken, null)
                 .andExpect(status().isOk())
@@ -529,12 +535,13 @@ class MobileFeaturesIntegrationTest {
         return mockMvc.perform(request);
     }
 
-    private int createAlert(String token, Kitchen kitchen, String message) throws Exception {
-        String body = send(post("/api/alerts"), token,
-                "{\"type\":\"STOCK\",\"severity\":\"HIGH\",\"kitchenId\":" + kitchen.getId() + ",\"message\":\"" + message + "\"}")
-                .andExpect(status().isCreated())
-                .andReturn().getResponse().getContentAsString();
-        return objectMapper.readTree(body).get("id").asInt();
+    private int createAlert(Kitchen kitchen, String message) {
+        return alertRepository.saveAndFlush(Alert.builder()
+                .type("STOCK")
+                .severity(AlertSeverity.HIGH)
+                .kitchen(kitchen)
+                .message(message)
+                .build()).getId();
     }
 
     private Product newProduct(String name, String barcode) {

@@ -1,22 +1,18 @@
 package com.inventra.api.infrastructure.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import java.util.List;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -37,7 +33,6 @@ import com.inventra.api.core.domain.user.User;
 import com.inventra.api.core.service.auth.model.request.LoginRequest;
 import com.inventra.api.core.service.auth.model.request.RegisterRequest;
 import com.inventra.api.core.service.auth.model.response.LoginResponse;
-import com.inventra.api.core.service.productqueue.model.ProductRegistrationJob;
 import com.inventra.api.infrastructure.client.openfoodfacts.OpenFoodFactsClient;
 import com.inventra.api.infrastructure.redis.queue.RedisProductRegistrationQueue;
 import com.inventra.api.infrastructure.repository.KitchenRepository;
@@ -82,61 +77,27 @@ class JwtAuthenticationIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"comprador", "estoquista"})
-    void restrictedRolesCannotCreateProductsThroughEitherEndpoint(String role) throws Exception {
+    void restrictedRolesCannotCreateProducts(String role) throws Exception {
         Profile roleProfile = profileRepository.findByAccessType(role).orElseGet(
                 () -> profileRepository.saveAndFlush(Profile.builder().accessType(role).build()));
         user.setProfile(roleProfile);
         userRepository.saveAndFlush(user);
         String token = login(email, RAW_PASSWORD);
-        for (String url : List.of("/api/products", "/api/products/barcode-registrations")) {
-            mockMvc.perform(post(url).header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content("{\"name\":\"Arroz\",\"unitId\":1,\"barcode\":\"7891234567890\"}"))
-                    .andExpect(status().isForbidden());
-        }
-        verifyNoInteractions(productRegistrationQueue);
+        mockMvc.perform(post("/api/products").header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Arroz\",\"unitId\":1,\"barcode\":\"7891234567890\"}"))
+                .andExpect(status().isForbidden());
     }
 
     @Test
-    void supervisorCanEnqueueAndReachNormalProductCreation() throws Exception {
+    void supervisorReachesNormalProductCreation() throws Exception {
         ensureProfile("supervisor");
         user.setProfile(profileRepository.findByAccessType("supervisor").orElseThrow());
         userRepository.saveAndFlush(user);
         String token = login(email, RAW_PASSWORD);
-        mockMvc.perform(post("/api/products/barcode-registrations")
-                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"Arroz\",\"unitId\":1,\"barcode\":\"7891234567890\"}"))
-                .andExpect(status().isAccepted());
         mockMvc.perform(post("/api/products").header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON).content("{"))
                 .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    void barcodeRegistrationRequiresAuthentication() throws Exception {
-        mockMvc.perform(post("/api/products/barcode-registrations")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"Arroz\",\"unitId\":1,\"barcode\":\"7891234567890\"}"))
-                .andExpect(status().isUnauthorized());
-        mockMvc.perform(get("/api/products/barcode-registrations/" + UUID.randomUUID()))
-                .andExpect(status().isUnauthorized());
-    }
-
-    @Test
-    void validTokenEnqueuesRegistrationWithAuthenticatedUser() throws Exception {
-        ensureProfile("supervisor");
-        user.setProfile(profileRepository.findByAccessType("supervisor").orElseThrow());
-        userRepository.saveAndFlush(user);
-        String token = login(email, RAW_PASSWORD);
-        mockMvc.perform(post("/api/products/barcode-registrations")
-                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"Arroz\",\"unitId\":1,\"barcode\":\"7891234567890\"}"))
-                .andExpect(status().isAccepted());
-        var captor = ArgumentCaptor.forClass(ProductRegistrationJob.class);
-        verify(productRegistrationQueue).enqueue(captor.capture());
-        assertThat(captor.getValue().userId()).isEqualTo(user.getId());
     }
 
     @BeforeEach

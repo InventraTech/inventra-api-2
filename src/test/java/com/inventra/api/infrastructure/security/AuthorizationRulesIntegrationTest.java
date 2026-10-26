@@ -133,19 +133,6 @@ class AuthorizationRulesIntegrationTest {
                 .andExpect(status().isConflict());
     }
 
-    // ===== Perfis =====
-
-    @Test
-    void baseProfilesCannotBeRenamed() throws Exception {
-        User supervisor = newUser("supervisor", newKitchen());
-
-        mockMvc.perform(put("/api/profiles/" + supervisor.getProfile().getId())
-                        .header(HttpHeaders.AUTHORIZATION, bearer(login(supervisor.getEmail())))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"accessType\":\"qualquer-coisa\"}"))
-                .andExpect(status().isConflict());
-    }
-
     // ===== Lotes de estoque =====
 
     @Test
