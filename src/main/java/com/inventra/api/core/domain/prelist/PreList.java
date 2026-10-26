@@ -1,5 +1,6 @@
 package com.inventra.api.core.domain.prelist;
 
+import com.inventra.api.core.domain.kitchen.Kitchen;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -31,4 +32,10 @@ public class PreList {
     // id da lista no banco do 1º ano; nulo nas listas criadas direto no Inventra
     @Column(name = "id_source", unique = true)
     private Integer sourceId;
+
+    // cozinha da lista; nula nas listas importadas antes da V018 (o filtro por cozinha não as devolve)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "id_kitchen")
+    @ToString.Exclude
+    private Kitchen kitchen;
 }
