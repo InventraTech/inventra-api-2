@@ -34,11 +34,13 @@ public class PreListService implements PreListUseCase {
 
     @Override
     public List<PreList> list(Integer kitchenId) {
-        if (kitchenId == null) {
-            return repository.findAllByOrderByListDateDescIdDesc();
+        // sem kitchenId, assume a cozinha do usuário logado; sem cozinha própria, não há o que listar
+        Integer effectiveKitchenId = kitchenId != null ? kitchenId : accessGuard.currentKitchenId();
+        if (effectiveKitchenId == null) {
+            return List.of();
         }
-        accessGuard.assertAccess(kitchenId);
-        return repository.findByKitchenIdOrderByListDateDescIdDesc(kitchenId);
+        accessGuard.assertAccess(effectiveKitchenId);
+        return repository.findByKitchenIdOrderByListDateDescIdDesc(effectiveKitchenId);
     }
 
     @Override

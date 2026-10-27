@@ -75,11 +75,13 @@ class PreListEndpointsIntegrationTest {
 
     @Test
     void compradorListsPreListsNewestFirstWithoutItems() throws Exception {
-        PreList older = preListRepository.saveAndFlush(PreList.builder().listDate(LocalDate.of(2026, 10, 1)).build());
+        Kitchen own = newKitchen();
+        PreList older = preListRepository.saveAndFlush(
+                PreList.builder().listDate(LocalDate.of(2026, 10, 1)).kitchen(own).build());
         PreList newer = preListRepository.saveAndFlush(
-                PreList.builder().listDate(LocalDate.of(2026, 10, 20)).sourceId(15).build());
+                PreList.builder().listDate(LocalDate.of(2026, 10, 20)).sourceId(15).kitchen(own).build());
 
-        mockMvc.perform(get("/api/pre-lists").header(HttpHeaders.AUTHORIZATION, bearer("comprador")))
+        mockMvc.perform(get("/api/pre-lists").header(HttpHeaders.AUTHORIZATION, bearer("comprador", own)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].id").value(newer.getId()))
                 .andExpect(jsonPath("$[0].sourceId").value(15))

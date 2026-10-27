@@ -24,8 +24,8 @@ public class PreListController {
 
     @Operation(summary = "Lista as pré-listas, da mais recente para a mais antiga",
             description = "Só o cabeçalho (data, origem e cozinha); os itens vêm em GET /api/pre-lists/{id}. "
-                    + "Com kitchenId, devolve só as listas dessa cozinha (precisa ser a do usuário logado); "
-                    + "sem kitchenId, devolve todas, inclusive as importadas sem cozinha.")
+                    + "Devolve só as listas da cozinha do usuário logado; kitchenId é opcional e, se informado, "
+                    + "precisa ser a própria cozinha do usuário. Usuário sem cozinha recebe lista vazia.")
     @PreAuthorize(Roles.REQUISITION)
     @GetMapping
     public ResponseEntity<List<PreListResponse>> list(@RequestParam(required = false) Integer kitchenId) {
