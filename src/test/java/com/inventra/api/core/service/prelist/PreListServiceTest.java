@@ -85,12 +85,21 @@ class PreListServiceTest {
     }
 
     @Test
-    void listReturnsNewestFirst() {
+    void listWithoutKitchenIdDefaultsToTheKitchenOfTheLoggedUser() {
         List<PreList> lists = List.of(preList());
-        when(repository.findAllByOrderByListDateDescIdDesc()).thenReturn(lists);
+        when(accessGuard.currentKitchenId()).thenReturn(3);
+        when(repository.findByKitchenIdOrderByListDateDescIdDesc(3)).thenReturn(lists);
 
         assertEquals(lists, service.list(null));
-        verify(accessGuard, never()).assertAccess(org.mockito.ArgumentMatchers.any());
+        verify(accessGuard).assertAccess(3);
+    }
+
+    @Test
+    void listWithoutKitchenIdIsEmptyWhenUserHasNoKitchen() {
+        when(accessGuard.currentKitchenId()).thenReturn(null);
+
+        assertEquals(List.of(), service.list(null));
+        verify(repository, never()).findByKitchenIdOrderByListDateDescIdDesc(org.mockito.ArgumentMatchers.any());
     }
 
     @Test
