@@ -28,6 +28,23 @@ public interface RequisitionRepository extends JpaRepository<Requisition, Intege
     List<Requisition> findByKitchenIdAndStatusAndRequesterId(Integer kitchenId, RequisitionStatus status,
                                                              UUID requesterId);
 
+    // Rascunho não mexeu em estoque: cancelar é só trocar o status, sem passar pela sp_cancel_requisition.
+    @Modifying(flushAutomatically = true)
+    @Query("""
+            UPDATE Requisition r SET r.status = :cancelled, r.reason = :reason
+            WHERE r.requester.id = :requesterId AND r.kitchen.id = :kitchenId AND r.status = :draft
+            """)
+    int cancelByRequesterAndKitchenAndStatus(@Param("requesterId") UUID requesterId,
+                                             @Param("kitchenId") Integer kitchenId,
+                                             @Param("draft") RequisitionStatus draft,
+                                             @Param("cancelled") RequisitionStatus cancelled,
+                                             @Param("reason") String reason);
+
+    default int cancelDrafts(UUID requesterId, Integer kitchenId, String reason) {
+        return cancelByRequesterAndKitchenAndStatus(requesterId, kitchenId, RequisitionStatus.DRAFT,
+            RequisitionStatus.CANCELLED, reason);
+    }
+
     // Procedures criadas em V002__business_rules.sql (sp_cancel_requisition foi recriada em
     // V009__requisition_draft.sql). clearAutomatically descarta as entidades em memória,
     // já que a procedure (e os triggers) alteram a linha direto no banco.

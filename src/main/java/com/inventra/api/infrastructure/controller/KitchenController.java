@@ -2,6 +2,7 @@ package com.inventra.api.infrastructure.controller;
 
 import java.net.URI;
 import java.util.List;
+import java.util.UUID;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -16,6 +17,7 @@ import com.inventra.api.core.service.kitchen.model.response.KitchenLookupRespons
 import com.inventra.api.core.service.kitchen.model.response.KitchenResponse;
 import com.inventra.api.core.service.stockbatch.StockBatchUseCase;
 import com.inventra.api.core.service.stockbatch.model.response.KitchenStockItemResponse;
+import com.inventra.api.core.service.user.UserUseCase;
 import com.inventra.api.infrastructure.security.Roles;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -32,6 +34,7 @@ public class KitchenController {
 
     private final KitchenUseCase useCase;
     private final StockBatchUseCase stockBatchUseCase;
+    private final UserUseCase userUseCase;
 
     @Operation(summary = "Cria uma cozinha")
     @ApiResponse(responseCode = "201", description = "Recurso criado")
@@ -114,6 +117,18 @@ public class KitchenController {
     @PatchMapping("/{id}/deactivate")
     public ResponseEntity<Void> deactivate(@PathVariable Integer id) {
         useCase.deactivate(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "Remove um membro da cozinha",
+            description = "Desfaz só o vínculo, sem desativar a conta: o histórico fica e os rascunhos de "
+                    + "requisição dele na cozinha são cancelados. Para sair, o próprio supervisor usa "
+                    + "POST /api/users/me/leave-kitchen.")
+    @ApiResponse(responseCode = "204", description = "Operação concluída, sem corpo na resposta")
+    @PreAuthorize(Roles.SUPERVISOR)
+    @DeleteMapping("/{kitchenId}/members/{userId}")
+    public ResponseEntity<Void> removeMember(@PathVariable Integer kitchenId, @PathVariable UUID userId) {
+        userUseCase.removeFromKitchen(kitchenId, userId);
         return ResponseEntity.noContent().build();
     }
 }
