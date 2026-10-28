@@ -9,6 +9,7 @@ public final class AlertType {
     public static final String REQUISITION_APPROVED = "REQUISITION_APPROVED";
     public static final String REQUISITION_REJECTED = "REQUISITION_REJECTED";
     public static final String UNREGISTERED_PRODUCT = "UNREGISTERED_PRODUCT";
+    public static final String MEMBER_LEFT = "MEMBER_LEFT";
 
     private AlertType() {
     }

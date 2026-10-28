@@ -9,7 +9,11 @@ import java.util.UUID;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import com.inventra.api.core.domain.alert.AlertType;
+import com.inventra.api.core.domain.alert.enums.AlertSeverity;
+import com.inventra.api.core.service.alert.AlertPublisher;
 import com.inventra.api.core.service.user.model.request.ChangePasswordRequest;
 import com.inventra.api.core.service.user.model.request.CreateUserRequest;
 import com.inventra.api.core.service.user.model.request.UpdateUserRequest;
@@ -24,6 +28,7 @@ import com.inventra.api.infrastructure.exception.BusinessRuleException;
 import com.inventra.api.infrastructure.exception.ResourceNotFoundException;
 import com.inventra.api.infrastructure.repository.KitchenRepository;
 import com.inventra.api.infrastructure.repository.ProfileRepository;
+import com.inventra.api.infrastructure.repository.RequisitionRepository;
 import com.inventra.api.infrastructure.repository.UserRepository;
 import com.inventra.api.infrastructure.security.KitchenAccessGuard;
 import com.inventra.api.infrastructure.security.Roles;
@@ -48,6 +53,8 @@ public class UserService implements UserUseCase {
     private final KitchenAccessGuard accessGuard;
     private final ImageStorage imageStorage;
     private final ImageValidator imageValidator;
+    private final RequisitionRepository requisitionRepository;
+    private final AlertPublisher alertPublisher;
 
     @Override
     public User create(CreateUserRequest request) {
@@ -207,6 +214,41 @@ public class UserService implements UserUseCase {
         repository.save(user);
     }
 
+    // Último supervisor de uma cozinha ativa não sai: senão ninguém mais a gerencia. Com a cozinha
+    // desativada, pode sair.
+    @Override
+    @Transactional
+    public User leaveCurrentKitchen() {
+        User user = findCurrent();
+        Kitchen kitchen = user.getKitchen();
+        if (kitchen == null) {
+            throw new BusinessRuleException("Você não está vinculado a nenhuma cozinha.");
+        }
+        if (Boolean.TRUE.equals(kitchen.getActive()) && isSupervisor(user)
+                && repository.countActiveByKitchenAndAccessType(kitchen.getId(), Roles.SUPERVISOR_PROFILE) <= 1) {
+            throw new BusinessRuleException("Promova outro membro a supervisor ou desative a cozinha antes de sair.");
+        }
+
+        User updated = detachFromKitchen(user, "Usuário saiu da cozinha.");
+        alertPublisher.notifyProfile(kitchen, Roles.SUPERVISOR_PROFILE, AlertType.MEMBER_LEFT, AlertSeverity.LOW,
+            user.getName() + " saiu da cozinha.", user.getId().toString());
+        return updated;
+    }
+
+    // Quem chama continua supervisor da cozinha, então ela nunca fica sem supervisor por aqui.
+    @Override
+    @Transactional
+    public void removeFromKitchen(Integer kitchenId, UUID userId) {
+        accessGuard.assertAccess(kitchenId);
+        User member = repository.findById(userId)
+            .filter(user -> user.getKitchen() != null && kitchenId.equals(user.getKitchen().getId()))
+            .orElseThrow(() -> new ResourceNotFoundException("Usuário não encontrado nessa cozinha."));
+        if (isCurrentUser(member)) {
+            throw new BusinessRuleException("Para sair da cozinha, use a opção de sair da cozinha.");
+        }
+        detachFromKitchen(member, "Usuário removido da cozinha.");
+    }
+
     @Override
     public void registerLogin(UUID id) {
         User user = load(id);
@@ -247,6 +289,17 @@ public class UserService implements UserUseCase {
 
     private boolean isCurrentUser(User user) {
         return user.getId().equals(accessGuard.currentUser().getId());
+    }
+
+    private static boolean isSupervisor(User user) {
+        return Roles.SUPERVISOR_PROFILE.equalsIgnoreCase(user.getProfile().getAccessType());
+    }
+
+    // Desfaz só o vínculo: conta ativa e histórico ficam. Os rascunhos dele ali não teriam mais quem os envie.
+    private User detachFromKitchen(User user, String draftCancelReason) {
+        requisitionRepository.cancelDrafts(user.getId(), user.getKitchen().getId(), draftCancelReason);
+        user.setKitchen(null);
+        return repository.save(user);
     }
 
     // Supervisor gerencia só usuários da própria cozinha.

@@ -61,6 +61,16 @@ public class UserController {
         return ResponseEntity.ok(UserResponse.fromEntity(useCase.removeCurrentPhoto()));
     }
 
+    // qualquer usuário autenticado com cozinha
+    @Operation(summary = "Sai da cozinha do usuário logado",
+            description = "Desfaz só o vínculo: a conta continua ativa e o histórico fica. Os rascunhos de "
+                    + "requisição dele na cozinha são cancelados e os supervisores recebem um alerta. "
+                    + "O último supervisor de uma cozinha ativa não pode sair (409).")
+    @PostMapping("/me/leave-kitchen")
+    public ResponseEntity<UserResponse> leaveKitchen() {
+        return ResponseEntity.ok(UserResponse.fromEntity(useCase.leaveCurrentKitchen()));
+    }
+
     @Operation(summary = "Busca um usuário pelo id")
     @GetMapping("/{id}")
     public ResponseEntity<UserResponse> findById(@PathVariable UUID id) {

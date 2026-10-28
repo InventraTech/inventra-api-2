@@ -41,6 +41,11 @@ public interface UserUseCase {
 
     void deactivate(UUID id);
 
+    // sair da cozinha / tirar alguém dela: desfaz só o vínculo; a conta continua ativa e o histórico fica
+    User leaveCurrentKitchen();
+
+    void removeFromKitchen(Integer kitchenId, UUID userId);
+
     // foto de perfil do usuário logado: cada um só troca a própria
     User updateCurrentPhoto(byte[] content);
 
