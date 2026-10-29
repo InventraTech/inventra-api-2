@@ -5,6 +5,10 @@ import java.util.List;
 import org.springframework.stereotype.Service;
 
 import com.inventra.api.core.domain.supplier.Supplier;
+import com.inventra.api.core.service.image.ImagePaths;
+import com.inventra.api.core.service.image.ImageStorage;
+import com.inventra.api.core.service.image.ImageValidator;
+import com.inventra.api.core.service.image.StoredImage;
 import com.inventra.api.core.service.supplier.model.request.CreateSupplierRequest;
 import com.inventra.api.core.service.supplier.model.request.UpdateSupplierRequest;
 import com.inventra.api.infrastructure.exception.BusinessRuleException;
@@ -20,6 +24,8 @@ public class SupplierService implements SupplierUseCase {
 
     private final SupplierRepository repository;
     private final KitchenAccessGuard accessGuard;
+    private final ImageStorage imageStorage;
+    private final ImageValidator imageValidator;
 
     @Override
     public Supplier create(CreateSupplierRequest request) {
@@ -73,6 +79,25 @@ public class SupplierService implements SupplierUseCase {
             supplier.setRating(request.rating());
         }
 
+        return repository.save(supplier);
+    }
+
+    @Override
+    public Supplier updatePhoto(Integer id, byte[] content) {
+        imageValidator.validate(content);
+        Supplier supplier = findById(id);
+
+        StoredImage image = imageStorage.upload(content, ImagePaths.supplier(id));
+        supplier.setPhotoUrl(image.url());
+        return repository.save(supplier);
+    }
+
+    @Override
+    public Supplier removePhoto(Integer id) {
+        Supplier supplier = findById(id);
+
+        imageStorage.delete(ImagePaths.supplier(id));
+        supplier.setPhotoUrl(null);
         return repository.save(supplier);
     }
 

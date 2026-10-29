@@ -14,6 +14,10 @@ public final class ImagePaths {
         return ROOT + "products/" + id;
     }
 
+    public static String supplier(Integer id) {
+        return ROOT + "suppliers/" + id;
+    }
+
     public static String user(UUID id) {
         return ROOT + "users/" + id;
     }

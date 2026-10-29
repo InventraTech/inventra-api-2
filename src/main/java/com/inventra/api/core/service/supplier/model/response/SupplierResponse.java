@@ -11,6 +11,7 @@ public record SupplierResponse(
         String email,
         String whatsapp,
         Integer rating,
+        String photoUrl,
         Boolean active,
         LocalDateTime createdAt
 ) {
@@ -22,6 +23,7 @@ public record SupplierResponse(
                 supplier.getEmail(),
                 supplier.getWhatsapp(),
                 supplier.getRating(),
+                supplier.getPhotoUrl(),
                 supplier.getActive(),
                 supplier.getCreatedAt()
         );

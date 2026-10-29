@@ -1,11 +1,13 @@
 package com.inventra.api.infrastructure.controller;
 
+import java.io.IOException;
 import java.net.URI;
 import java.util.List;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.inventra.api.core.domain.supplier.Supplier;
 import com.inventra.api.core.service.supplier.SupplierUseCase;
@@ -63,6 +65,23 @@ public class SupplierController {
     public ResponseEntity<SupplierResponse> update(@PathVariable Integer id,
                                                     @Valid @RequestBody UpdateSupplierRequest request) {
         Supplier updated = useCase.update(id, request);
+        return ResponseEntity.ok(SupplierResponse.fromEntity(updated));
+    }
+
+    @Operation(summary = "Envia ou substitui a foto do fornecedor (Cloudinary)")
+    @PreAuthorize(Roles.SUPERVISOR)
+    @PutMapping("/{id}/photo")
+    public ResponseEntity<SupplierResponse> updatePhoto(@PathVariable Integer id,
+                                                         @RequestParam("file") MultipartFile file) throws IOException {
+        Supplier updated = useCase.updatePhoto(id, file.getBytes());
+        return ResponseEntity.ok(SupplierResponse.fromEntity(updated));
+    }
+
+    @Operation(summary = "Remove a foto do fornecedor")
+    @PreAuthorize(Roles.SUPERVISOR)
+    @DeleteMapping("/{id}/photo")
+    public ResponseEntity<SupplierResponse> removePhoto(@PathVariable Integer id) {
+        Supplier updated = useCase.removePhoto(id);
         return ResponseEntity.ok(SupplierResponse.fromEntity(updated));
     }
 
