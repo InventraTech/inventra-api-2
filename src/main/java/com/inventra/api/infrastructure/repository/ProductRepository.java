@@ -14,6 +14,14 @@ import com.inventra.api.core.domain.product.Product;
 
 public interface ProductRepository extends JpaRepository<Product, Integer> {
 
+    // Busca por nome sem diferenciar maiúscula nem acento ("acucar" acha "Açúcar"), sem a extensão unaccent
+    // (o schema vem do repositório do banco): minúsculas e translate() dos dois lados do LIKE.
+    String ACCENTED = "áàâãäéèêëíìîïóòôõöúùûüçñ";
+    String UNACCENTED = "aaaaaeeeeiiiiooooouuuucn";
+    String NAME_MATCHES = "CAST(function('translate', LOWER(p.name), '" + ACCENTED + "', '" + UNACCENTED + "') AS String) "
+            + "LIKE CAST(function('translate', LOWER(CONCAT('%', :name, '%')), '" + ACCENTED + "', '" + UNACCENTED
+            + "') AS String)";
+
     boolean existsByBarcode(String barcode);
 
     @EntityGraph(attributePaths = {"category", "unit"})
@@ -26,7 +34,9 @@ public interface ProductRepository extends JpaRepository<Product, Integer> {
     @EntityGraph(attributePaths = {"category", "unit"})
     @Query("""
             SELECT p FROM Product p
-            WHERE LOWER(p.name) LIKE LOWER(CONCAT('%', :name, '%'))
+            WHERE
+            """ + NAME_MATCHES + """
+
               AND (:categoryId IS NULL OR p.category.id = :categoryId)
               AND (:active IS NULL OR p.active = :active)
             """)
@@ -48,7 +58,9 @@ public interface ProductRepository extends JpaRepository<Product, Integer> {
             WHERE p.active = true
               AND (pkp.minStock IS NOT NULL
                    OR EXISTS (SELECT 1 FROM StockBatch sb WHERE sb.product = p AND sb.kitchen.id = :kitchenId))
-              AND LOWER(p.name) LIKE LOWER(CONCAT('%', :name, '%'))
+              AND
+            """ + NAME_MATCHES + """
+
               AND (:categoryId IS NULL OR p.category.id = :categoryId)
             ORDER BY p.name
             """)
