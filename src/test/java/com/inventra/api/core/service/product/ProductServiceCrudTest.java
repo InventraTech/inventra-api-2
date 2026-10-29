@@ -2,6 +2,7 @@ package com.inventra.api.core.service.product;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -36,6 +37,7 @@ import com.inventra.api.core.domain.kitchen.Kitchen;
 import com.inventra.api.core.domain.product.Product;
 import com.inventra.api.core.domain.product.ProductKitchenParameter;
 import com.inventra.api.core.domain.product.ProductSupplier;
+import com.inventra.api.core.domain.product.ProductSupplierId;
 import com.inventra.api.core.domain.supplier.Supplier;
 import com.inventra.api.core.domain.unit.Unit;
 import com.inventra.api.core.service.image.ImageStorage;
@@ -63,6 +65,7 @@ class ProductServiceCrudTest {
 
     private static final Integer PRODUCT_ID = 7;
     private static final Integer KITCHEN_ID = 1;
+    private static final Integer SUPPLIER_ID = 3;
 
     @Mock private ProductRepository repository;
     @Mock private CategoryRepository categoryRepository;
@@ -86,6 +89,8 @@ class ProductServiceCrudTest {
         unit = Unit.builder().id(1).symbol("kg").build();
         category = Category.builder().id(2).name("Grãos").build();
         when(repository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(supplierRepository.findById(SUPPLIER_ID))
+                .thenReturn(Optional.of(Supplier.builder().id(SUPPLIER_ID).legalName("Dist").active(true).build()));
     }
 
     private Product product() {
@@ -99,7 +104,8 @@ class ProductServiceCrudTest {
         when(unitRepository.findById(1)).thenReturn(Optional.of(unit));
         when(categoryRepository.findById(2)).thenReturn(Optional.of(category));
 
-        Product result = service.create(new CreateProductRequest("Arroz", "Tio João", 2, 1, "789"));
+        Product result = service.create(new CreateProductRequest("Arroz", "Tio João", 2, 1, "789",
+                SUPPLIER_ID, "ARZ-1", new BigDecimal("25.90"), 4));
 
         assertEquals("Arroz", result.getName());
         assertSame(unit, result.getUnit());
@@ -108,10 +114,32 @@ class ProductServiceCrudTest {
     }
 
     @Test
+    void createLinksTheProductToTheSupplier() {
+        when(unitRepository.findById(1)).thenReturn(Optional.of(unit));
+        when(repository.save(any(Product.class))).thenAnswer(inv -> {
+            Product saved = inv.getArgument(0);
+            saved.setId(PRODUCT_ID);
+            return saved;
+        });
+
+        service.create(new CreateProductRequest("Arroz", null, null, 1, null,
+                SUPPLIER_ID, "ARZ-1", new BigDecimal("25.90"), 4));
+
+        ArgumentCaptor<ProductSupplier> captor = forClass(ProductSupplier.class);
+        verify(productSupplierRepository).save(captor.capture());
+        assertEquals(PRODUCT_ID, captor.getValue().getId().getProductId());
+        assertEquals(SUPPLIER_ID, captor.getValue().getId().getSupplierId());
+        assertEquals("ARZ-1", captor.getValue().getSupplierCode());
+        assertEquals(new BigDecimal("25.90"), captor.getValue().getReferencePrice());
+        assertEquals(4, captor.getValue().getLeadTimeDays());
+    }
+
+    @Test
     void createWithoutCategoryIsAllowed() {
         when(unitRepository.findById(1)).thenReturn(Optional.of(unit));
 
-        Product result = service.create(new CreateProductRequest("Arroz", null, null, 1, null));
+        Product result = service.create(new CreateProductRequest("Arroz", null, null, 1, null,
+                SUPPLIER_ID, null, null, null));
 
         assertEquals(null, result.getCategory());
         verify(categoryRepository, never()).findById(any());
@@ -121,21 +149,42 @@ class ProductServiceCrudTest {
     void createRejectsDuplicateBarcode() {
         when(repository.existsByBarcode("789")).thenReturn(true);
 
-        assertThrows(BusinessRuleException.class,
-                () -> service.create(new CreateProductRequest("Arroz", null, null, 1, "789")));
+        assertThrows(BusinessRuleException.class, () -> service.create(new CreateProductRequest("Arroz", null, null, 1,
+                "789", SUPPLIER_ID, null, null, null)));
         verify(repository, never()).save(any());
     }
 
     @Test
     void createFailsForUnknownUnitOrCategory() {
         when(unitRepository.findById(1)).thenReturn(Optional.empty());
-        assertThrows(ResourceNotFoundException.class,
-                () -> service.create(new CreateProductRequest("Arroz", null, null, 1, null)));
+        assertThrows(ResourceNotFoundException.class, () -> service.create(new CreateProductRequest("Arroz", null,
+                null, 1, null, SUPPLIER_ID, null, null, null)));
 
         when(unitRepository.findById(1)).thenReturn(Optional.of(unit));
         when(categoryRepository.findById(2)).thenReturn(Optional.empty());
-        assertThrows(ResourceNotFoundException.class,
-                () -> service.create(new CreateProductRequest("Arroz", null, 2, 1, null)));
+        assertThrows(ResourceNotFoundException.class, () -> service.create(new CreateProductRequest("Arroz", null,
+                2, 1, null, SUPPLIER_ID, null, null, null)));
+    }
+
+    // produto não nasce sem fornecedor: nem sem o id (a fila não passa pelo @Valid), nem com um que não existe
+    // ou está desativado. Em todos os casos, nada é gravado
+    @Test
+    void createRejectsMissingUnknownOrInactiveSupplier() {
+        when(unitRepository.findById(1)).thenReturn(Optional.of(unit));
+
+        assertThrows(BusinessRuleException.class, () -> service.create(new CreateProductRequest("Arroz", null, null,
+                1, null, null, null, null, null)));
+
+        when(supplierRepository.findById(9)).thenReturn(Optional.empty());
+        assertThrows(ResourceNotFoundException.class, () -> service.create(new CreateProductRequest("Arroz", null,
+                null, 1, null, 9, null, null, null)));
+
+        when(supplierRepository.findById(8)).thenReturn(Optional.of(Supplier.builder().id(8).active(false).build()));
+        assertThrows(BusinessRuleException.class, () -> service.create(new CreateProductRequest("Arroz", null, null,
+                1, null, 8, null, null, null)));
+
+        verify(repository, never()).save(any());
+        verify(productSupplierRepository, never()).save(any());
     }
 
     // ---------- leitura ----------
@@ -249,6 +298,8 @@ class ProductServiceCrudTest {
         assertEquals(3, captor.getValue().getId().getSupplierId());
         assertEquals(new BigDecimal("25.90"), captor.getValue().getReferencePrice());
         assertEquals(4, captor.getValue().getLeadTimeDays());
+        // sem um campo novo, regravar o mesmo vínculo não geraria UPDATE (e o trigger não renovaria a data)
+        assertNotNull(captor.getValue().getUpdatedAt());
     }
 
     @Test
@@ -261,9 +312,30 @@ class ProductServiceCrudTest {
         verify(productSupplierRepository, never()).save(any());
     }
 
+    // o app regrava o vínculo a cada edição do produto mandando só o fornecedor: o preço de referência fica
+    @Test
+    void relinkingWithOnlyTheSupplierKeepsTheExistingCommercialTerms() {
+        Supplier supplier = Supplier.builder().id(3).legalName("Dist").build();
+        ProductSupplier existing = ProductSupplier.builder()
+                .id(new ProductSupplierId(PRODUCT_ID, 3)).product(product()).supplier(supplier)
+                .supplierCode("ARZ-1").referencePrice(new BigDecimal("25.90")).leadTimeDays(4).build();
+        when(repository.findById(PRODUCT_ID)).thenReturn(Optional.of(product()));
+        when(supplierRepository.findById(3)).thenReturn(Optional.of(supplier));
+        when(productSupplierRepository.findById(new ProductSupplierId(PRODUCT_ID, 3))).thenReturn(Optional.of(existing));
+
+        service.linkSupplier(PRODUCT_ID, new LinkSupplierRequest(3, null, new BigDecimal("24.50"), null));
+
+        ArgumentCaptor<ProductSupplier> captor = forClass(ProductSupplier.class);
+        verify(productSupplierRepository).save(captor.capture());
+        assertEquals("ARZ-1", captor.getValue().getSupplierCode());
+        assertEquals(new BigDecimal("24.50"), captor.getValue().getReferencePrice());
+        assertEquals(4, captor.getValue().getLeadTimeDays());
+        assertNotNull(captor.getValue().getUpdatedAt());
+    }
+
     @Test
     void listSuppliersIsEmptyWhenProductHasNone() {
-        when(productSupplierRepository.findByProduct_Id(PRODUCT_ID)).thenReturn(List.of());
+        when(productSupplierRepository.findByProductIdNewestFirst(PRODUCT_ID)).thenReturn(List.of());
 
         assertTrue(service.listSuppliers(PRODUCT_ID).isEmpty());
     }

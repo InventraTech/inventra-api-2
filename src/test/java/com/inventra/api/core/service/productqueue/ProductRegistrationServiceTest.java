@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.security.access.AccessDeniedException;
 
+import com.inventra.api.core.domain.supplier.Supplier;
 import com.inventra.api.core.domain.user.User;
 import com.inventra.api.core.service.productqueue.model.BarcodeRegistrationRequest;
 import com.inventra.api.core.service.productqueue.model.ProductRegistrationJob;
@@ -23,23 +24,42 @@ import com.inventra.api.infrastructure.exception.BusinessRuleException;
 import com.inventra.api.infrastructure.exception.ResourceNotFoundException;
 import com.inventra.api.infrastructure.redis.queue.RedisProductRegistrationQueue;
 import com.inventra.api.infrastructure.repository.ProductRepository;
+import com.inventra.api.infrastructure.repository.SupplierRepository;
 import com.inventra.api.infrastructure.security.KitchenAccessGuard;
 
 class ProductRegistrationServiceTest {
     private final RedisProductRegistrationQueue queue = mock(RedisProductRegistrationQueue.class);
     private final KitchenAccessGuard guard = mock(KitchenAccessGuard.class);
     private final ProductRepository products = mock(ProductRepository.class);
-    private final ProductRegistrationService service = new ProductRegistrationService(queue, guard, products);
+    private final SupplierRepository suppliers = mock(SupplierRepository.class);
+    private final ProductRegistrationService service = new ProductRegistrationService(queue, guard, products, suppliers);
 
     @Test void duplicateIsRejectedBeforeEnqueue() {
         when(products.existsByBarcode(request.barcode())).thenReturn(true);
         assertThrows(BusinessRuleException.class, () -> service.enqueue(request));
         verifyNoInteractions(queue);
     }
-    private final UUID userId = UUID.randomUUID();
-    private final BarcodeRegistrationRequest request = new BarcodeRegistrationRequest("Arroz", null, null, 1, "7891234567890");
 
-    @BeforeEach void authenticate() { when(guard.currentUser()).thenReturn(User.builder().id(userId).build()); }
+    @Test void unknownSupplierIsRejectedBeforeEnqueue() {
+        when(suppliers.findById(3)).thenReturn(Optional.empty());
+        assertThrows(ResourceNotFoundException.class, () -> service.enqueue(request));
+        verifyNoInteractions(queue);
+    }
+
+    @Test void inactiveSupplierIsRejectedBeforeEnqueue() {
+        when(suppliers.findById(3)).thenReturn(Optional.of(Supplier.builder().id(3).active(false).build()));
+        assertThrows(BusinessRuleException.class, () -> service.enqueue(request));
+        verifyNoInteractions(queue);
+    }
+
+    private final UUID userId = UUID.randomUUID();
+    private final BarcodeRegistrationRequest request =
+            new BarcodeRegistrationRequest("Arroz", null, null, 1, "7891234567890", 3, null, null, null);
+
+    @BeforeEach void authenticate() {
+        when(guard.currentUser()).thenReturn(User.builder().id(userId).build());
+        when(suppliers.findById(3)).thenReturn(Optional.of(Supplier.builder().id(3).active(true).build()));
+    }
 
     @Test void producerStoresAuthenticatedOwnerAndReturnsQueuedStatus() {
         var response = service.enqueue(request);

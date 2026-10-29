@@ -1,6 +1,7 @@
 package com.inventra.api.core.service.product.model.response;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 import com.inventra.api.core.domain.product.ProductSupplier;
 
@@ -8,7 +9,8 @@ public record ProductSupplierResponse(
         SupplierSummary supplier,
         String supplierCode,
         BigDecimal referencePrice,
-        Integer leadTimeDays
+        Integer leadTimeDays,
+        LocalDateTime updatedAt
 ) {
     public record SupplierSummary(Integer id, String legalName) {
     }
@@ -18,7 +20,8 @@ public record ProductSupplierResponse(
                 new SupplierSummary(link.getSupplier().getId(), link.getSupplier().getLegalName()),
                 link.getSupplierCode(),
                 link.getReferencePrice(),
-                link.getLeadTimeDays()
+                link.getLeadTimeDays(),
+                link.getUpdatedAt()
         );
     }
 }

@@ -92,6 +92,30 @@ class CrudEndpointsIntegrationTest {
         return mockMvc.perform(request);
     }
 
+    // Produto não nasce sem fornecedor: os testes que não tratam do vínculo usam um fornecedor padrão, criado
+    // na primeira vez que um deles precisa (assim os testes de fornecedor não o veem na listagem).
+    private Integer defaultSupplierId;
+
+    private String withSupplier(String productJson) throws Exception {
+        if (defaultSupplierId == null) {
+            defaultSupplierId = createAndGetId("/api/suppliers",
+                    "{\"legalName\":\"Fornecedor Padrão\",\"cnpj\":\"00.000.000/0009-99\"}");
+        }
+        return withSupplier(productJson, defaultSupplierId);
+    }
+
+    private static String withSupplier(String productJson, int supplierId) {
+        return "{\"supplierId\":" + supplierId + "," + productJson.substring(1);
+    }
+
+    private int createProduct(String productJson) throws Exception {
+        return createAndGetId("/api/products", withSupplier(productJson));
+    }
+
+    private int createProduct(String productJson, int supplierId) throws Exception {
+        return createAndGetId("/api/products", withSupplier(productJson, supplierId));
+    }
+
     private int createAndGetId(String url, String body) throws Exception {
         String response = send(post(url), body).andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
@@ -221,9 +245,9 @@ class CrudEndpointsIntegrationTest {
         int categoryId = createAndGetId("/api/categories", "{\"name\":\"Mercearia\"}");
         int supplierId = createAndGetId("/api/suppliers", "{\"legalName\":\"Forn\",\"cnpj\":\"11.111.111/0001-11\"}");
 
-        int productId = createAndGetId("/api/products",
+        int productId = createProduct(
                 "{\"name\":\"Arroz Branco\",\"brand\":\"Tio João\",\"categoryId\":" + categoryId
-                        + ",\"unitId\":" + unitId + ",\"barcode\":\"7891234567895\"}");
+                        + ",\"unitId\":" + unitId + ",\"barcode\":\"7891234567895\"}", supplierId);
 
         send(get("/api/products/" + productId), null)
                 .andExpect(status().isOk()).andExpect(jsonPath("$.name").value("Arroz Branco"));
@@ -253,12 +277,32 @@ class CrudEndpointsIntegrationTest {
     @Test
     void productRejectsDuplicateBarcodeAndUnknownUnit() throws Exception {
         int unitId = createAndGetId("/api/units", "{\"symbol\":\"cx\",\"description\":\"Caixa\"}");
-        createAndGetId("/api/products", "{\"name\":\"A\",\"unitId\":" + unitId + ",\"barcode\":\"123\"}");
+        createProduct("{\"name\":\"A\",\"unitId\":" + unitId + ",\"barcode\":\"123\"}");
 
-        send(post("/api/products"), "{\"name\":\"B\",\"unitId\":" + unitId + ",\"barcode\":\"123\"}")
+        send(post("/api/products"), withSupplier("{\"name\":\"B\",\"unitId\":" + unitId + ",\"barcode\":\"123\"}"))
                 .andExpect(status().isConflict());
-        send(post("/api/products"), "{\"name\":\"C\",\"unitId\":99999}").andExpect(status().isNotFound());
+        send(post("/api/products"), withSupplier("{\"name\":\"C\",\"unitId\":99999}")).andExpect(status().isNotFound());
         send(get("/api/products/99999"), null).andExpect(status().isNotFound());
+    }
+
+    @Test
+    void productCannotBeCreatedWithoutAnActiveSupplier() throws Exception {
+        int unitId = createAndGetId("/api/units", "{\"symbol\":\"pc\",\"description\":\"Pacote\"}");
+        int inactive = createAndGetId("/api/suppliers", "{\"legalName\":\"Inativo\",\"cnpj\":\"22.222.222/0001-22\"}");
+        send(patch("/api/suppliers/" + inactive + "/deactivate"), null).andExpect(status().isNoContent());
+
+        String product = "{\"name\":\"Sem Fornecedor\",\"unitId\":" + unitId + ",\"barcode\":\"4444\"}";
+        send(post("/api/products"), product).andExpect(status().isBadRequest());
+        send(post("/api/products"), withSupplier(product, 99999)).andExpect(status().isNotFound());
+        send(post("/api/products"), withSupplier(product, inactive)).andExpect(status().isConflict());
+        // nenhuma das tentativas deixou produto sem vínculo para trás
+        send(get("/api/products").param("name", "Sem Fornecedor"), null)
+                .andExpect(status().isOk()).andExpect(jsonPath("$.content.length()").value(0));
+
+        int productId = createProduct(product);
+        send(get("/api/products/" + productId + "/suppliers"), null)
+                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].supplier.id").value(defaultSupplierId));
     }
 
     // ===== Lotes de estoque =====
@@ -266,7 +310,7 @@ class CrudEndpointsIntegrationTest {
     @Test
     void stockBatchEntryListAndAdjust() throws Exception {
         int unitId = createAndGetId("/api/units", "{\"symbol\":\"kg2\",\"description\":\"Kilo\"}");
-        int productId = createAndGetId("/api/products", "{\"name\":\"Feijão\",\"unitId\":" + unitId + "}");
+        int productId = createProduct("{\"name\":\"Feijão\",\"unitId\":" + unitId + "}");
 
         int batchId = createAndGetId("/api/stock-batches",
                 "{\"productId\":" + productId + ",\"kitchenId\":" + kitchen.getId()
@@ -284,7 +328,7 @@ class CrudEndpointsIntegrationTest {
     @Test
     void stockBatchEntryRejectsExpirationBeforeEntryDate() throws Exception {
         int unitId = createAndGetId("/api/units", "{\"symbol\":\"l2\",\"description\":\"Litro\"}");
-        int productId = createAndGetId("/api/products", "{\"name\":\"Leite\",\"unitId\":" + unitId + "}");
+        int productId = createProduct("{\"name\":\"Leite\",\"unitId\":" + unitId + "}");
 
         send(post("/api/stock-batches"),
                 "{\"productId\":" + productId + ",\"kitchenId\":" + kitchen.getId()
@@ -309,13 +353,13 @@ class CrudEndpointsIntegrationTest {
         int unitId = createAndGetId("/api/units", "{\"symbol\":\"ltr\",\"description\":\"Litro\"}");
         int dairyId = createAndGetId("/api/categories", "{\"name\":\"Laticínios\"}");
         int grainId = createAndGetId("/api/categories", "{\"name\":\"Grãos\"}");
-        int withBatches = createAndGetId("/api/products",
+        int withBatches = createProduct(
                 "{\"name\":\"Leite Integral\",\"brand\":\"Italac\",\"categoryId\":" + dairyId + ",\"unitId\":" + unitId + "}");
-        int parameterOnly = createAndGetId("/api/products",
+        int parameterOnly = createProduct(
                 "{\"name\":\"Arroz Parametro\",\"categoryId\":" + grainId + ",\"unitId\":" + unitId + "}");
-        int expiredOnly = createAndGetId("/api/products",
+        int expiredOnly = createProduct(
                 "{\"name\":\"Creme Vencido\",\"categoryId\":" + dairyId + ",\"unitId\":" + unitId + "}");
-        createAndGetId("/api/products", "{\"name\":\"Nunca Usado\",\"unitId\":" + unitId + "}");
+        createProduct("{\"name\":\"Nunca Usado\",\"unitId\":" + unitId + "}");
 
         batchOf(withBatches, null, "LEITE1", 12, "2099-12-31");
         batchOf(withBatches, null, "LEITE2", 6, "2099-06-30");
@@ -373,7 +417,7 @@ class CrudEndpointsIntegrationTest {
     @Test
     void productSearchWorksWithoutTheNameFilter() throws Exception {
         int unitId = createAndGetId("/api/units", "{\"symbol\":\"pct\",\"description\":\"Pacote\"}");
-        int productId = createAndGetId("/api/products", "{\"name\":\"Macarrão\",\"unitId\":" + unitId + "}");
+        int productId = createProduct("{\"name\":\"Macarrão\",\"unitId\":" + unitId + "}");
 
         send(get("/api/products").param("active", "true").param("size", "200"), null)
                 .andExpect(status().isOk())
@@ -383,8 +427,8 @@ class CrudEndpointsIntegrationTest {
     @Test
     void stockBatchListFiltersByProductWhenKitchenIsAlsoGiven() throws Exception {
         int unitId = createAndGetId("/api/units", "{\"symbol\":\"und\",\"description\":\"Unidade\"}");
-        int first = createAndGetId("/api/products", "{\"name\":\"Óleo\",\"unitId\":" + unitId + "}");
-        int second = createAndGetId("/api/products", "{\"name\":\"Vinagre\",\"unitId\":" + unitId + "}");
+        int first = createProduct("{\"name\":\"Óleo\",\"unitId\":" + unitId + "}");
+        int second = createProduct("{\"name\":\"Vinagre\",\"unitId\":" + unitId + "}");
         int firstBatch = batchOf(first, null, "O1", 5, "2099-01-01");
         int secondBatch = batchOf(second, null, "V1", 5, "2099-01-01");
         String kitchenId = String.valueOf(kitchen.getId());
@@ -400,8 +444,9 @@ class CrudEndpointsIntegrationTest {
     @Test
     void supplierListFiltersByKitchenBatches() throws Exception {
         int unitId = createAndGetId("/api/units", "{\"symbol\":\"cxa\",\"description\":\"Caixa\"}");
-        int productId = createAndGetId("/api/products", "{\"name\":\"Ovo\",\"unitId\":" + unitId + "}");
         int delivered = createAndGetId("/api/suppliers", "{\"legalName\":\"Zeta Granja\",\"cnpj\":\"22.222.222/0001-22\"}");
+        // o produto nasce vinculado à Zeta, que já entrega: o vínculo não acrescenta ninguém à lista
+        int productId = createProduct("{\"name\":\"Ovo\",\"unitId\":" + unitId + "}", delivered);
         int alsoDelivered = createAndGetId("/api/suppliers", "{\"legalName\":\"Alfa Aves\",\"cnpj\":\"33.333.333/0001-33\"}");
         int neverDelivered = createAndGetId("/api/suppliers", "{\"legalName\":\"Sem Entrega\",\"cnpj\":\"44.444.444/0001-44\"}");
         int inactive = createAndGetId("/api/suppliers", "{\"legalName\":\"Inativo\",\"cnpj\":\"55.555.555/0001-55\"}");
@@ -414,7 +459,7 @@ class CrudEndpointsIntegrationTest {
         // sem filtro continua devolvendo todos os ativos
         send(get("/api/suppliers"), null)
                 .andExpect(jsonPath("$[?(@.id == " + neverDelivered + ")]").exists());
-        // com kitchenId: só quem tem lote na cozinha, sem repetir, ordenado por razão social
+        // com kitchenId: só quem tem lote na cozinha ou vínculo com produto dela, sem repetir, ordenado por razão social
         send(get("/api/suppliers").param("kitchenId", String.valueOf(kitchen.getId())), null)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(2))
@@ -436,7 +481,7 @@ class CrudEndpointsIntegrationTest {
     @Test
     void inventoryOpenCountListAndCancel() throws Exception {
         int unitId = createAndGetId("/api/units", "{\"symbol\":\"pc\",\"description\":\"Peça\"}");
-        int productId = createAndGetId("/api/products", "{\"name\":\"Sal\",\"unitId\":" + unitId + "}");
+        int productId = createProduct("{\"name\":\"Sal\",\"unitId\":" + unitId + "}");
         int batchId = createAndGetId("/api/stock-batches",
                 "{\"productId\":" + productId + ",\"kitchenId\":" + kitchen.getId()
                         + ",\"batchNumber\":\"L3\",\"initialQuantity\":10,\"entryDate\":\"2026-10-01\"}");
@@ -467,7 +512,7 @@ class CrudEndpointsIntegrationTest {
     @Test
     void requisitionCreateAddItemAndSubmit() throws Exception {
         int unitId = createAndGetId("/api/units", "{\"symbol\":\"sc\",\"description\":\"Saco\"}");
-        int productId = createAndGetId("/api/products", "{\"name\":\"Açúcar\",\"unitId\":" + unitId + "}");
+        int productId = createProduct("{\"name\":\"Açúcar\",\"unitId\":" + unitId + "}");
 
         int requisitionId = createAndGetId("/api/requisitions",
                 "{\"type\":\"PURCHASE\",\"origin\":\"Cozinha Teste\",\"kitchenId\":" + kitchen.getId() + "}");

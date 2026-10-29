@@ -45,7 +45,9 @@ public class SupplierController {
     }
 
     @Operation(summary = "Lista os fornecedores ativos",
-            description = "Com kitchenId, só os que já entregaram algum lote na cozinha (a do próprio usuário).")
+            description = "Com kitchenId (a cozinha do próprio usuário), só os da cozinha: os que já entregaram algum "
+                    + "lote nela e os vinculados a um produto ativo dela (com estoque mínimo ou lote na cozinha), "
+                    + "mesmo sem entrada no estoque. Ordenados pela razão social.")
     @GetMapping
     public ResponseEntity<List<SupplierResponse>> listActive(@RequestParam(required = false) Integer kitchenId) {
         List<Supplier> suppliers = kitchenId != null ? useCase.listActiveByKitchen(kitchenId) : useCase.listActive();

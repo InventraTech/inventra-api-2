@@ -26,7 +26,10 @@ public class ProductRegistrationProcessor {
         var request = job.request();
         var existing = repository.findByBarcode(request.barcode());
         if (existing.isPresent()) return existing.get().getId();
+        // job enfileirado antes do fornecedor virar obrigatório chega com supplierId nulo: o create recusa
+        // (BusinessRuleException) e o consumer o marca como FAILED/BUSINESS_RULE, sem cadastrar produto sem fornecedor
         return productUseCase.create(new CreateProductRequest(request.name(), request.brand(),
-                request.categoryId(), request.unitId(), request.barcode())).getId();
+                request.categoryId(), request.unitId(), request.barcode(), request.supplierId(),
+                request.supplierCode(), request.referencePrice(), request.leadTimeDays())).getId();
     }
 }

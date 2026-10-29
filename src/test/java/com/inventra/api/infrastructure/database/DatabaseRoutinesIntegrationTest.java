@@ -11,6 +11,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -161,7 +162,11 @@ class DatabaseRoutinesIntegrationTest extends PostgresIntegrationTest {
     private int createProduct() throws Exception {
         String suffix = UUID.randomUUID().toString().substring(0, 6);
         int unitId = createdId("/api/units", "{\"symbol\":\"u%s\",\"description\":\"Unidade %s\"}".formatted(suffix, suffix));
-        return createdId("/api/products", "{\"name\":\"Arroz %s\",\"unitId\":%d}".formatted(suffix, unitId));
+        // produto não nasce sem fornecedor
+        int supplierId = createdId("/api/suppliers", "{\"legalName\":\"Fornecedor %s\",\"cnpj\":\"%s\"}".formatted(suffix,
+                ThreadLocalRandom.current().nextLong(10_000_000_000_000L, 99_999_999_999_999L)));
+        return createdId("/api/products", "{\"name\":\"Arroz %s\",\"unitId\":%d,\"supplierId\":%d}"
+                .formatted(suffix, unitId, supplierId));
     }
 
     private int createBatch(int productId, String quantity, LocalDate entryDate, LocalDate expirationDate)
