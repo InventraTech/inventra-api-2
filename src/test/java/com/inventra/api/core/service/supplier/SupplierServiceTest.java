@@ -27,7 +27,6 @@ import com.inventra.api.core.service.supplier.model.request.CreateSupplierReques
 import com.inventra.api.core.service.supplier.model.request.UpdateSupplierRequest;
 import com.inventra.api.infrastructure.exception.BusinessRuleException;
 import com.inventra.api.infrastructure.exception.ResourceNotFoundException;
-import com.inventra.api.infrastructure.repository.StockBatchRepository;
 import com.inventra.api.infrastructure.repository.SupplierRepository;
 import com.inventra.api.infrastructure.security.KitchenAccessGuard;
 
@@ -37,7 +36,6 @@ class SupplierServiceTest {
     private static final String CNPJ = "12.345.678/0001-90";
 
     @Mock private SupplierRepository repository;
-    @Mock private StockBatchRepository stockBatchRepository;
     @Mock private KitchenAccessGuard accessGuard;
 
     @InjectMocks private SupplierService service;
@@ -95,9 +93,9 @@ class SupplierServiceTest {
     }
 
     @Test
-    void listActiveByKitchenReturnsSuppliersWithBatchesInTheKitchen() {
+    void listActiveByKitchenReturnsTheKitchenSuppliers() {
         List<Supplier> suppliers = List.of(supplier());
-        when(stockBatchRepository.findActiveSuppliersByKitchen(7)).thenReturn(suppliers);
+        when(repository.findActiveByKitchen(7)).thenReturn(suppliers);
 
         assertSame(suppliers, service.listActiveByKitchen(7));
         verify(accessGuard).assertAccess(7);
@@ -108,7 +106,7 @@ class SupplierServiceTest {
         doThrow(new AccessDeniedException("sem acesso")).when(accessGuard).assertAccess(8);
 
         assertThrows(AccessDeniedException.class, () -> service.listActiveByKitchen(8));
-        verify(stockBatchRepository, never()).findActiveSuppliersByKitchen(any());
+        verify(repository, never()).findActiveByKitchen(any());
     }
 
     @Test

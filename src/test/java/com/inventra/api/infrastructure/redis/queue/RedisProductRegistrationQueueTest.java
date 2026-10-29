@@ -242,7 +242,7 @@ class RedisProductRegistrationQueueTest {
 
     private static ProductRegistrationJob job(String barcode) {
         return ProductRegistrationJob.queued(UUID.randomUUID(),
-                new BarcodeRegistrationRequest("Arroz", "Inventra", null, 1, barcode));
+                new BarcodeRegistrationRequest("Arroz", "Inventra", null, 1, barcode, 1, null, null, null));
     }
 
     @Test void poisonMessagesLeavePendingAndAllowNextJobToComplete() {

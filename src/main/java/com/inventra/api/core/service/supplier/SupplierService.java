@@ -9,7 +9,6 @@ import com.inventra.api.core.service.supplier.model.request.CreateSupplierReques
 import com.inventra.api.core.service.supplier.model.request.UpdateSupplierRequest;
 import com.inventra.api.infrastructure.exception.BusinessRuleException;
 import com.inventra.api.infrastructure.exception.ResourceNotFoundException;
-import com.inventra.api.infrastructure.repository.StockBatchRepository;
 import com.inventra.api.infrastructure.repository.SupplierRepository;
 import com.inventra.api.infrastructure.security.KitchenAccessGuard;
 
@@ -20,7 +19,6 @@ import lombok.RequiredArgsConstructor;
 public class SupplierService implements SupplierUseCase {
 
     private final SupplierRepository repository;
-    private final StockBatchRepository stockBatchRepository;
     private final KitchenAccessGuard accessGuard;
 
     @Override
@@ -55,7 +53,7 @@ public class SupplierService implements SupplierUseCase {
     @Override
     public List<Supplier> listActiveByKitchen(Integer kitchenId) {
         accessGuard.assertAccess(kitchenId);
-        return stockBatchRepository.findActiveSuppliersByKitchen(kitchenId);
+        return repository.findActiveByKitchen(kitchenId);
     }
 
     @Override

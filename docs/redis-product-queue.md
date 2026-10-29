@@ -30,11 +30,15 @@ Content-Type: application/json
   "brand": "Marca revisada",
   "categoryId": 1,
   "unitId": 1,
-  "barcode": "7891234567890"
+  "barcode": "7891234567890",
+  "supplierId": 7,
+  "supplierCode": "SUP-ARROZ-01",
+  "referencePrice": 25.90,
+  "leadTimeDays": 3
 }
 ```
 
-`name`, `unitId` e `barcode` são obrigatórios. Nome tem até 150 caracteres e marca até 80. IDs devem ser positivos; o código aceita de 8 a 14 dígitos. `categoryId` e `brand` são opcionais. Unidade e categoria precisam existir no PostgreSQL quando o consumer processar o cadastro. A foto é enviada separadamente pelo endpoint seguro de upload da API de produtos.
+`name`, `unitId`, `barcode` e `supplierId` são obrigatórios: o produto não nasce sem fornecedor e é gravado já vinculado a ele, como no `POST /api/products`. O fornecedor precisa existir e estar ativo (conferido no enqueue e de novo pelo consumer); `supplierCode`, `referencePrice` e `leadTimeDays` são opcionais. Job enfileirado antes dessa regra, sem `supplierId`, termina `FAILED`/`BUSINESS_RULE` sem cadastrar o produto. Nome tem até 150 caracteres e marca até 80. IDs devem ser positivos; o código aceita de 8 a 14 dígitos. `categoryId` e `brand` são opcionais. Unidade e categoria precisam existir no PostgreSQL quando o consumer processar o cadastro. A foto é enviada separadamente pelo endpoint seguro de upload da API de produtos.
 
 A resposta inclui `eventId`, `status: QUEUED`, timestamps e um header `Location`:
 

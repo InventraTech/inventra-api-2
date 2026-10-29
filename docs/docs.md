@@ -591,7 +591,7 @@ Produtos ativos ligados à cozinha (com lote em qualquer status ou com parâmetr
 
 ### 7.2 Listar ativos
 
-Com `?kitchenId=1`, devolve só os fornecedores ativos que já entregaram algum lote naquela cozinha, ordenados por razão social (**403** se a cozinha não for a do usuário).
+Com `?kitchenId=1`, devolve só os fornecedores ativos da cozinha, ordenados por razão social (**403** se a cozinha não for a do usuário). Um fornecedor é da cozinha se já entregou algum lote nela **ou** está vinculado (8.8) a um produto ativo dela, isto é, com estoque mínimo definido (8.10) ou lote na cozinha. Assim, o fornecedor de uma compra planejada aparece antes de o produto ter entrada no estoque. O vínculo é global: se duas cozinhas têm o mesmo produto, o fornecedor dele aparece nas duas.
 
 `GET /api/suppliers` → só os ativos.
 
@@ -621,13 +621,19 @@ Com `?kitchenId=1`, devolve só os fornecedores ativos que já entregaram algum 
   "brand": "Marca X",
   "categoryId": 3,
   "unitId": 1,
-  "barcode": "7891234567890"
+  "barcode": "7891234567890",
+  "supplierId": 7,
+  "supplierCode": "SUP-FARINHA-01",
+  "referencePrice": 8.90,
+  "leadTimeDays": 3
 }
 ```
 
-**Validações:** `name` até 150; `brand` até 80; `unitId` obrigatório; `categoryId` opcional; `barcode` **único**, até 50. A foto **não** vem aqui: envie o arquivo pelo upload (8.5), que valida a imagem e gera a URL.
+**Validações:** `name` até 150; `brand` até 80; `unitId` obrigatório; `categoryId` opcional; `barcode` **único**, até 50; `supplierId` **obrigatório**; `supplierCode` até 50, `referencePrice` e `leadTimeDays` opcionais e não negativos. A foto **não** vem aqui: envie o arquivo pelo upload (8.5), que valida a imagem e gera a URL.
 
-**Erros:** **409** se `barcode` já existir; **404** se `unitId` / `categoryId` inexistentes.
+**Produto não nasce sem fornecedor:** o produto e o vínculo com o fornecedor (o mesmo de 8.8) são gravados juntos, numa transação só. Se o vínculo falhar, o produto também não é gravado. Para mais fornecedores, use 8.8 depois.
+
+**Erros:** **400** sem `supplierId`; **409** se `barcode` já existir ou se o fornecedor estiver desativado; **404** se `unitId` / `categoryId` / `supplierId` inexistentes.
 
 **201 Created** — `ProductResponse`:
 
@@ -713,9 +719,11 @@ curl -X PUT http://localhost:8080/api/products/42/photo \
 
 **204 No Content**. Insere ou atualiza o vínculo (chave composta `product_id + supplier_id`). `referencePrice` é usado como sugestão em requisições sem preço.
 
+Só `supplierId` é obrigatório. Ao regravar um vínculo que já existe, os campos enviados substituem os atuais e os que vierem nulos ou ausentes **mantêm** o valor gravado: mandar só `{ "supplierId": 7 }` não apaga o preço de referência. Toda gravação, mesmo com os mesmos dados, torna o vínculo o mais recente do produto (8.9).
+
 ### 8.9 Listar fornecedores vinculados
 
-`GET /api/products/{id}/suppliers` → array:
+`GET /api/products/{id}/suppliers` → array, do vínculo gravado por último para o mais antigo (`updatedAt`; empate pelo maior id de fornecedor). O primeiro é o fornecedor atual do produto.
 
 ```json
 [
@@ -723,10 +731,13 @@ curl -X PUT http://localhost:8080/api/products/42/photo \
     "supplier": { "id": 7, "legalName": "Fornecedor X" },
     "supplierCode": "SUP-FARINHA-01",
     "referencePrice": 8.90,
-    "leadTimeDays": 3
+    "leadTimeDays": 3,
+    "updatedAt": "2026-10-29T10:15:00"
   }
 ]
 ```
+
+`updatedAt` é a hora do banco: o cadastro grava o padrão e o trigger `trg_product_supplier_updated_at` (V020) renova a cada gravação. Vínculos anteriores à V020 ficam com a data da migration.
 
 ### 8.10 Definir parâmetros por cozinha
 

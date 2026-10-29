@@ -85,7 +85,7 @@ class JwtAuthenticationIntegrationTest {
         String token = login(email, RAW_PASSWORD);
         mockMvc.perform(post("/api/products").header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"Arroz\",\"unitId\":1,\"barcode\":\"7891234567890\"}"))
+                        .content("{\"name\":\"Arroz\",\"unitId\":1,\"barcode\":\"7891234567890\",\"supplierId\":1}"))
                 .andExpect(status().isForbidden());
     }
 

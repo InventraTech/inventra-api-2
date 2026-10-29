@@ -130,7 +130,8 @@ public class ProductController {
         return ResponseEntity.noContent().build();
     }
 
-    @Operation(summary = "Vincula um fornecedor ao produto")
+    @Operation(summary = "Vincula um fornecedor ao produto",
+            description = "Grava ou regrava o vínculo; a cada gravação ele passa a ser o mais recente do produto.")
     @ApiResponse(responseCode = "204", description = "Operação concluída, sem corpo na resposta")
     @PreAuthorize(Roles.SUPERVISOR)
     @PostMapping("/{id}/suppliers")
@@ -139,7 +140,9 @@ public class ProductController {
         return ResponseEntity.noContent().build();
     }
 
-    @Operation(summary = "Lista os fornecedores do produto")
+    @Operation(summary = "Lista os fornecedores do produto",
+            description = "Do vínculo gravado por último para o mais antigo (updatedAt). Regravar um vínculo que já "
+                    + "existe, mesmo com os mesmos dados, o leva para o topo.")
     @GetMapping("/{id}/suppliers")
     public ResponseEntity<List<ProductSupplierResponse>> listSuppliers(@PathVariable Integer id) {
         return ResponseEntity.ok(useCase.listSuppliers(id));

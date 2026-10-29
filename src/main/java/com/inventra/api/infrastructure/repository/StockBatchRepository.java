@@ -16,7 +16,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.inventra.api.core.domain.stock.StockBatch;
 import com.inventra.api.core.domain.stock.enums.StockBatchStatus;
-import com.inventra.api.core.domain.supplier.Supplier;
 import com.inventra.api.core.service.ranking.RankingCandidate;
 
 import jakarta.persistence.LockModeType;
@@ -101,15 +100,6 @@ public interface StockBatchRepository extends JpaRepository<StockBatch, Integer>
     List<Object[]> summarizeUsableForProduct(@Param("kitchenId") Integer kitchenId,
                                              @Param("productId") Integer productId,
                                              @Param("today") LocalDate today);
-
-    // Fornecedores ativos que já entregaram algum lote na cozinha.
-    @Query("""
-            SELECT DISTINCT s FROM StockBatch sb
-            JOIN sb.supplier s
-            WHERE sb.kitchen.id = :kitchenId AND s.active = true
-            ORDER BY s.legalName
-            """)
-    List<Supplier> findActiveSuppliersByKitchen(@Param("kitchenId") Integer kitchenId);
 
     // Saldo que conta como estoque: lotes ativos e não vencidos.
     default BigDecimal sumActiveQuantity(Integer productId, Integer kitchenId) {
