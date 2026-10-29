@@ -41,6 +41,9 @@ public class Supplier {
     @Column(name = "rating")
     private Integer rating;
 
+    @Column(name = "photo_url", length = 255)
+    private String photoUrl;
+
     @Column(name = "active", nullable = false)
     @Builder.Default
     private Boolean active = true;

@@ -19,6 +19,10 @@ public interface SupplierUseCase {
 
     Supplier update(Integer id, UpdateSupplierRequest request);
 
+    Supplier updatePhoto(Integer id, byte[] content);
+
+    Supplier removePhoto(Integer id);
+
     void activate(Integer id);
 
     void deactivate(Integer id);
