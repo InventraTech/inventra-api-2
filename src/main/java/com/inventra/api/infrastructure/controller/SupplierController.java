@@ -46,13 +46,18 @@ public class SupplierController {
         return ResponseEntity.ok(SupplierResponse.fromEntity(useCase.findById(id)));
     }
 
-    @Operation(summary = "Lista os fornecedores ativos",
-            description = "Com kitchenId (a cozinha do próprio usuário), só os da cozinha: os que já entregaram algum "
-                    + "lote nela e os vinculados a um produto ativo dela (com estoque mínimo ou lote na cozinha), "
-                    + "mesmo sem entrada no estoque. Ordenados pela razão social.")
+    @Operation(summary = "Lista os fornecedores ativos ou inativos",
+            description = "Por padrão (active=true) lista os ativos; active=false lista os inativos e é exclusivo do "
+                    + "supervisor. Com kitchenId (a cozinha do próprio usuário), só os da cozinha: os que já "
+                    + "entregaram algum lote nela e os vinculados a um produto ativo dela (com estoque mínimo ou "
+                    + "lote na cozinha), mesmo sem entrada no estoque. Ordenados pela razão social.")
+    @PreAuthorize("#active or " + Roles.SUPERVISOR)
     @GetMapping
-    public ResponseEntity<List<SupplierResponse>> listActive(@RequestParam(required = false) Integer kitchenId) {
-        List<Supplier> suppliers = kitchenId != null ? useCase.listActiveByKitchen(kitchenId) : useCase.listActive();
+    public ResponseEntity<List<SupplierResponse>> list(@RequestParam(required = false) Integer kitchenId,
+                                                       @RequestParam(defaultValue = "true") boolean active) {
+        List<Supplier> suppliers = kitchenId != null
+                ? useCase.listByKitchen(kitchenId, active)
+                : useCase.list(active);
         List<SupplierResponse> responses = suppliers.stream()
                 .map(SupplierResponse::fromEntity)
                 .toList();

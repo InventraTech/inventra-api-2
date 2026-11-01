@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
@@ -96,28 +97,31 @@ class SupplierServiceTest {
     }
 
     @Test
-    void listActiveReturnsRepositoryActiveSuppliers() {
+    void listReturnsRepositorySuppliersWithTheRequestedStatus() {
         List<Supplier> active = List.of(supplier());
-        when(repository.findByActiveTrue()).thenReturn(active);
+        List<Supplier> inactive = List.of(supplier());
+        when(repository.findByActiveOrderByLegalName(true)).thenReturn(active);
+        when(repository.findByActiveOrderByLegalName(false)).thenReturn(inactive);
 
-        assertSame(active, service.listActive());
+        assertSame(active, service.list(true));
+        assertSame(inactive, service.list(false));
     }
 
     @Test
-    void listActiveByKitchenReturnsTheKitchenSuppliers() {
+    void listByKitchenReturnsTheKitchenSuppliers() {
         List<Supplier> suppliers = List.of(supplier());
-        when(repository.findActiveByKitchen(7)).thenReturn(suppliers);
+        when(repository.findByKitchen(7, false)).thenReturn(suppliers);
 
-        assertSame(suppliers, service.listActiveByKitchen(7));
+        assertSame(suppliers, service.listByKitchen(7, false));
         verify(accessGuard).assertAccess(7);
     }
 
     @Test
-    void listActiveByKitchenDeniesAnotherUsersKitchen() {
+    void listByKitchenDeniesAnotherUsersKitchen() {
         doThrow(new AccessDeniedException("sem acesso")).when(accessGuard).assertAccess(8);
 
-        assertThrows(AccessDeniedException.class, () -> service.listActiveByKitchen(8));
-        verify(repository, never()).findActiveByKitchen(any());
+        assertThrows(AccessDeniedException.class, () -> service.listByKitchen(8, true));
+        verify(repository, never()).findByKitchen(any(), anyBoolean());
     }
 
     @Test
