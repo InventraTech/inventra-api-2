@@ -12,10 +12,10 @@ public interface SupplierUseCase {
 
     Supplier findById(Integer id);
 
-    List<Supplier> listActive();
+    List<Supplier> list(boolean active);
 
-    // fornecedores ativos que já entregaram algum lote na cozinha
-    List<Supplier> listActiveByKitchen(Integer kitchenId);
+    // fornecedores da cozinha (já entregaram lote nela ou estão vinculados a um produto dela) com o status pedido
+    List<Supplier> listByKitchen(Integer kitchenId, boolean active);
 
     Supplier update(Integer id, UpdateSupplierRequest request);
 

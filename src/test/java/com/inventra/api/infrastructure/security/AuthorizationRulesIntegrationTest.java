@@ -25,12 +25,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.inventra.api.core.domain.kitchen.Kitchen;
 import com.inventra.api.core.domain.profile.Profile;
+import com.inventra.api.core.domain.supplier.Supplier;
 import com.inventra.api.core.domain.user.User;
 import com.inventra.api.core.service.auth.model.request.LoginRequest;
 import com.inventra.api.core.service.auth.model.response.LoginResponse;
 import com.inventra.api.infrastructure.client.openfoodfacts.OpenFoodFactsClient;
 import com.inventra.api.infrastructure.repository.KitchenRepository;
 import com.inventra.api.infrastructure.repository.ProfileRepository;
+import com.inventra.api.infrastructure.repository.SupplierRepository;
 import com.inventra.api.infrastructure.repository.UserRepository;
 
 // Regras de autorização e de negócio que só aparecem com o contexto inteiro (segurança + serviços + JPA).
@@ -53,6 +55,9 @@ class AuthorizationRulesIntegrationTest {
 
     @Autowired
     private KitchenRepository kitchenRepository;
+
+    @Autowired
+    private SupplierRepository supplierRepository;
 
     @Autowired
     private PasswordEncoder passwordEncoder;
@@ -146,6 +151,35 @@ class AuthorizationRulesIntegrationTest {
                 .andExpect(status().isForbidden());
     }
 
+    // ===== Fornecedores =====
+
+    @Test
+    void supervisorListsInactiveSuppliersOnlyWhenAsked() throws Exception {
+        Supplier inactive = newSupplier(false);
+        String token = login(newUser("supervisor", newKitchen()).getEmail());
+
+        mockMvc.perform(get("/api/suppliers").param("active", "false").header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.id == " + inactive.getId() + ")]").exists())
+                .andExpect(jsonPath("$[?(@.active == true)]").doesNotExist());
+
+        mockMvc.perform(get("/api/suppliers").header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.id == " + inactive.getId() + ")]").doesNotExist());
+    }
+
+    @Test
+    void onlySupervisorListsInactiveSuppliers() throws Exception {
+        for (String accessType : new String[] {"comprador", "estoquista"}) {
+            String token = login(newUser(accessType, newKitchen()).getEmail());
+
+            mockMvc.perform(get("/api/suppliers").param("active", "false").header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                    .andExpect(status().isForbidden());
+            mockMvc.perform(get("/api/suppliers").header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                    .andExpect(status().isOk());
+        }
+    }
+
     // ===== Requisições =====
 
     @Test
@@ -190,6 +224,15 @@ class AuthorizationRulesIntegrationTest {
         return kitchenRepository.saveAndFlush(Kitchen.builder()
                 .name("Cozinha de Teste")
                 .code("K-" + UUID.randomUUID().toString().substring(0, 8))
+                .build());
+    }
+
+    private Supplier newSupplier(boolean active) {
+        String digits = UUID.randomUUID().toString().replaceAll("\\D", "") + "00000000000000";
+        return supplierRepository.saveAndFlush(Supplier.builder()
+                .legalName("Fornecedor de Teste")
+                .cnpj(digits.substring(0, 14))
+                .active(active)
                 .build());
     }
 

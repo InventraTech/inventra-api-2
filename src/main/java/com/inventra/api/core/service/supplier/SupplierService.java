@@ -52,14 +52,14 @@ public class SupplierService implements SupplierUseCase {
     }
 
     @Override
-    public List<Supplier> listActive() {
-        return repository.findByActiveTrue();
+    public List<Supplier> list(boolean active) {
+        return repository.findByActiveOrderByLegalName(active);
     }
 
     @Override
-    public List<Supplier> listActiveByKitchen(Integer kitchenId) {
+    public List<Supplier> listByKitchen(Integer kitchenId, boolean active) {
         accessGuard.assertAccess(kitchenId);
-        return repository.findActiveByKitchen(kitchenId);
+        return repository.findByKitchen(kitchenId, active);
     }
 
     @Override
