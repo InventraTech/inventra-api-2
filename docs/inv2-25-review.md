@@ -1,5 +1,7 @@
 # INV2-25 — Entrega isolada da revisão
 
+> Registro histórico da revisão. Não descreve o estado atual: a coluna `registration_event_id` e a `V010` citadas aqui não existem no código, e os endpoints foram removidos em 26/10/2026. Ver [redis-product-queue.md](redis-product-queue.md).
+
 Alterações preparadas na branch local `fix/inv2-25-review`, baseada em
 `origin/feat/fila-processamento-redis` (8b7f2d2), em uma cópia separada:
 `C:/Users/eduardoqueiroz-ieg/..Inventra/inventra-inv2-25-review`.
