@@ -26,22 +26,23 @@
 
 ## Convenções
 
-- `User.id` é **UUID**. Os demais recursos (`Kitchen`, `Product`, `Category`, `Unit`, `Supplier`, `Alert`, `Inventory`, `InventoryCount`, `StockBatch`, `Requisition`, `RequisitionItem`, `Profile`) usam **Integer**.
+- `User.id` é **UUID**. Os demais recursos (`Kitchen`, `Product`, `Category`, `Unit`, `Supplier`, `Alert`, `Inventory`, `InventoryCount`, `StockBatch`, `Requisition`, `RequisitionItem`, `Profile`, `PreList`) usam **Integer**.
 - Timestamps em **ISO-8601** (`2026-09-24T14:30:00`). Datas puras (`entryDate`, `expirationDate`) em `yyyy-MM-dd`.
 - Números decimais em `BigDecimal`:
   - Quantidades → precisão `(12,3)` (até 3 casas)
   - Preços → precisão `(12,2)`
-- **Escopo por cozinha:** todo usuário só acessa dados da própria `kitchen`. Endpoints com `kitchenId` no path/body/query validam contra `user.kitchen` → **403** se divergir; listagens sem `kitchenId` (`/kitchens`, `/stock-batches/low-stock`, `/stock-batches?productId=`, `/requisitions?status=`, `/requisitions?requesterId=`, `/products/{id}/kitchen-parameters`) devolvem só dados da cozinha do usuário (filtrados no banco).
+- **Escopo por cozinha:** todo usuário só acessa dados da própria `kitchen`. Endpoints com `kitchenId` no path/body/query validam contra `user.kitchen` → **403** se divergir; listagens sem `kitchenId` (`/kitchens`, `/stock-batches/low-stock`, `/stock-batches?productId=`, `/requisitions?status=`, `/requisitions?requesterId=`, `/products/{id}/kitchen-parameters`, `/pre-lists`) devolvem só dados da cozinha do usuário (filtrados no banco).
 - Endpoints paginados aceitam `?page=0&size=20&sort=name,asc` e respondem no formato `Page<T>` do Spring (`content`, `totalElements`, `totalPages`, `pageable`, ...).
-- Todos os endpoints exigem `Authorization: Bearer <token>` (inclusive o envio de cliques, 13.1), **exceto** `POST /api/auth/login`, `/register`, `/google`, `/refresh`, `/logout`, `/password/forgot`, `/password/verify`, `/password/reset`, `GET /swagger-ui/**`, `GET /v3/api-docs/**`, `GET /actuator/health`.
+- Todos os endpoints exigem `Authorization: Bearer <token>` (inclusive o envio de cliques, 13.1), **exceto** `POST /api/auth/login`, `/register`, `/google`, `/refresh`, `/logout`, `/password/forgot`, `/password/verify`, `/password/reset`, `GET /swagger-ui/**`, `GET /v3/api-docs/**`, `GET /actuator/health` (e `/actuator/health/liveness`, `/actuator/health/readiness`).
 - Token inválido/expirado → **401**. Conta desativada (`active = false`) → **403** no login; tokens já emitidos param de valer na hora (**401**).
 - **Papéis (RBAC):** só existem `supervisor`, `estoquista` e `comprador` (`profile.accessType`, authority `ROLE_<ACCESS_TYPE>`). Chamar um endpoint fora do papel → **403**.
   - **Supervisor:** tudo.
-  - **Estoquista:** lotes de estoque (`/api/stock-batches`: entrada, baixa, reposição, ajuste e consultas), histórico de movimentações (`/api/stock-movements`), inventários (`/api/inventories`) e o aviso de produto não cadastrado (12.7).
-  - **Comprador:** requisições (`/api/requisitions`: criar, itens, submit, cancelar, listar). Aprovar/rejeitar é do supervisor.
-  - Qualquer usuário logado: `GET` de catálogo (produtos, categorias, unidades, fornecedores, cozinhas, perfis), descoberta de cozinhas (4.7), consultar e marcar como lidos os **próprios** alertas (12), enviar cliques (13.1), ver/editar o próprio nome (`/api/users/{seuId}`) e trocar a própria senha.
+  - **Estoquista:** lotes de estoque (`/api/stock-batches`: entrada, baixa, reposição, ajuste, consultas e ranking de validade), resumo do estoque da cozinha (4.8), histórico de movimentações (`/api/stock-movements`), inventários (`/api/inventories`) e o aviso de produto não cadastrado (12.6).
+  - **Comprador:** requisições (`/api/requisitions`: criar, itens, submit, cancelar, listar). Aprovar/rejeitar é do supervisor. Também lê as pré-listas (11.11).
+  - Qualquer usuário logado: `GET` de catálogo (produtos, categorias, unidades, fornecedores, cozinhas, perfis), descoberta de cozinhas (4.7), consultar e marcar como lidos os **próprios** alertas (12), enviar cliques (13.1), ver/editar o próprio nome (`/api/users/{seuId}`), trocar a própria senha, gerenciar a própria foto (2.8) e sair da cozinha (2.9).
 - E-mail não diferencia maiúsculas/minúsculas (login e unicidade); é gravado em minúsculas.
-- `password_hash` nunca aparece em respostas — o `User` só expõe `id`, `name`, `email`, `kitchen`, `profile`, `active`, `hasPassword`, `lastLogin`, `createdAt`.
+- `password_hash` nunca aparece em respostas — o `User` só expõe `id`, `name`, `email`, `photoUrl`, `kitchen`, `profile`, `active`, `hasPassword`, `lastLogin`, `createdAt`.
+- Os resumos aninhados de produto e de usuário (`product: {...}`, `requester: {...}`, ...) também trazem `photoUrl`, nula quando não há foto, mesmo onde os exemplos abaixo a omitem.
 
 ---
 
@@ -73,6 +74,7 @@
     "id": "8f1c9b2a-...",
     "name": "Maria",
     "email": "maria@example.com",
+    "photoUrl": null,
     "kitchen": { "id": 1, "name": "Cozinha Central" },
     "profile": { "id": 2, "accessType": "SUPERVISOR" },
     "active": true,
@@ -248,7 +250,7 @@ Código errado, expirado ou já usado: **400** com `code: INVALID_RESET_CODE`. N
 
 **Regras de acesso:**
 - Criar, listar, ativar e desativar são exclusivos do **supervisor**, e só para usuários da **própria cozinha**.
-- Usuário ainda **sem cozinha** não pertence a ninguém: o supervisor só pode buscá-lo por id (`GET /api/users/{id}`) e **puxá-lo** pra cozinha dele (`PUT /api/users/{id}` com `kitchenId` = a cozinha do supervisor). Não aparece na listagem e não pode ser desativado nem ter o perfil trocado sem ser vinculado.
+- Usuário ainda **sem cozinha** não pertence a ninguém: o supervisor não o enxerga, não o gerencia e não o puxa para a cozinha dele. A entrada é sempre por pedido do próprio usuário, aprovado por um supervisor (4.6).
 - Ninguém vincula usuário a uma cozinha que não seja a sua.
 - A cozinha precisa de pelo menos um supervisor ativo: rebaixar o último → **409**.
 - Qualquer usuário pode buscar e editar o **próprio nome** e trocar a **própria senha**.
@@ -323,32 +325,37 @@ Todos os campos são opcionais — só aplica os enviados. Só o próprio usuár
 
 `GET /api/users/me` — **200 OK** com o `UserResponse` do usuário do token, lido do banco. Serve para o app atualizar o que mudou no servidor (por exemplo, a cozinha depois que um supervisor aprova o pedido de entrada) sem novo login.
 
+### 2.8 Foto de perfil
+
+`PUT /api/users/me/photo` — `multipart/form-data`, campo `file`. Qualquer usuário autenticado, só a própria foto.
+
+Mesmos formatos, limite e erros do upload de foto de produto (8.5). `public_id` no Cloudinary: `inventra/users/{id}`.
+
+`DELETE /api/users/me/photo` — remove a foto.
+
+**200 OK** nos dois casos — `UserResponse` atualizado.
+
+### 2.9 Sair da cozinha
+
+`POST /api/users/me/leave-kitchen` — **200 OK** com o `UserResponse` já sem cozinha.
+
+Desfaz só o vínculo: a conta continua ativa e o histórico fica. Os rascunhos de requisição do usuário na cozinha são cancelados e os supervisores recebem o alerta `MEMBER_LEFT`.
+
+**Erros:** **409** se o usuário não tem cozinha, ou se é o último supervisor ativo de uma cozinha ativa (`Promova outro membro a supervisor ou desative a cozinha antes de sair.`).
+
+Para tirar outra pessoa da cozinha, veja 4.9.
+
 ---
 
 ## 3. Perfis
 
 `/api/profiles`
 
-Perfis de acesso (roles). O `AuthService` casa `AccessType` do registro com `profile.accessType` em **lowercase** (`supervisor`, `estoquista`, `comprador`) no banco; nas respostas o `accessType` sai em MAIÚSCULAS. Criar/atualizar/deletar perfil é exclusivo do supervisor; atualizar `accessType` para um valor já usado → **409**. Os perfis base (`supervisor`, `estoquista`, `comprador`) sustentam as permissões de todas as cozinhas: não podem ser renomeados nem excluídos (só a descrição muda), e variações do nome (`SUPERVISOR`, ` supervisor`) são recusadas → **409**.
+Perfis de acesso (roles). O `AuthService` casa `AccessType` do registro com `profile.accessType` em **lowercase** (`supervisor`, `estoquista`, `comprador`) no banco; nas respostas o `accessType` sai em MAIÚSCULAS.
 
-### 3.1 Criar
+`GET /api/profiles` — qualquer usuário autenticado. **200 OK** com um array de `ProfileResponse` `{ id, accessType, description }`.
 
-`POST /api/profiles`
-
-```json
-{ "accessType": "supervisor", "description": "Supervisão de cozinha" }
-```
-
-**Validações:** `accessType` único, até 50 chars; `description` até 255.
-
-**201 Created** — `ProfileResponse` `{ id, accessType, description }`.
-
-### 3.2 Listar / buscar / atualizar / deletar
-
-- `GET /api/profiles` — array.
-- `GET /api/profiles/{id}`.
-- `PUT /api/profiles/{id}` — mesmo corpo do POST.
-- `DELETE /api/profiles/{id}` → **204**.
+É a única rota: os perfis não são criados, alterados nem excluídos pela API.
 
 ---
 
@@ -524,6 +531,16 @@ Produtos ativos ligados à cozinha (com lote em qualquer status ou com parâmetr
 ]
 ```
 
+A busca por `name` não diferencia maiúsculas nem acentos (`acucar` acha `Açúcar`).
+
+### 4.9 Remover membro
+
+`DELETE /api/kitchens/{kitchenId}/members/{userId}` — só supervisor, da própria cozinha. **204 No Content**.
+
+Desfaz só o vínculo, sem desativar a conta: o histórico fica e os rascunhos de requisição do usuário na cozinha são cancelados.
+
+**Erros:** **403** se a cozinha não for a do supervisor; **404** se o usuário não estiver nessa cozinha; **409** se o supervisor tentar remover a si mesmo (para isso, 2.9).
+
 ---
 
 ## 5. Categorias
@@ -587,13 +604,15 @@ Produtos ativos ligados à cozinha (com lote em qualquer status ou com parâmetr
 
 **Validações:** `legalName` obrigatório, até 150; `cnpj` obrigatório, até 18, **único**; `email` formato válido; `rating` entre 1 e 5.
 
-**201 Created** — `SupplierResponse` `{ id, legalName, cnpj, email, whatsapp, rating, active, createdAt }`.
+**201 Created** — `SupplierResponse` `{ id, legalName, cnpj, email, whatsapp, rating, photoUrl, active, createdAt }`.
 
-### 7.2 Listar ativos
+### 7.2 Listar
 
-Com `?kitchenId=1`, devolve só os fornecedores ativos da cozinha, ordenados por razão social (**403** se a cozinha não for a do usuário). Um fornecedor é da cozinha se já entregou algum lote nela **ou** está vinculado (8.8) a um produto ativo dela, isto é, com estoque mínimo definido (8.10) ou lote na cozinha. Assim, o fornecedor de uma compra planejada aparece antes de o produto ter entrada no estoque. O vínculo é global: se duas cozinhas têm o mesmo produto, o fornecedor dele aparece nas duas.
+`GET /api/suppliers` → os ativos, ordenados por razão social.
 
-`GET /api/suppliers` → só os ativos.
+`GET /api/suppliers?active=false` → os inativos. Só supervisor (**403** para os demais).
+
+Com `?kitchenId=1`, devolve só os fornecedores da cozinha, ativos ou inativos conforme `active` (**403** se a cozinha não for a do usuário). Um fornecedor é da cozinha se já entregou algum lote nela **ou** está vinculado (8.8) a um produto ativo dela, isto é, com estoque mínimo definido (8.10) ou lote na cozinha. Assim, o fornecedor de uma compra planejada aparece antes de o produto ter entrada no estoque. O vínculo é global: se duas cozinhas têm o mesmo produto, o fornecedor dele aparece nas duas.
 
 ### 7.3 Buscar / atualizar
 
@@ -604,6 +623,16 @@ Com `?kitchenId=1`, devolve só os fornecedores ativos da cozinha, ordenados por
 
 `PATCH /api/suppliers/{id}/activate` → **204**
 `PATCH /api/suppliers/{id}/deactivate` → **204**
+
+### 7.5 Foto
+
+`PUT /api/suppliers/{id}/photo` — `multipart/form-data`, campo `file`. Só supervisor.
+
+Mesmos formatos, limite e erros do upload de foto de produto (8.5). `public_id` no Cloudinary: `inventra/suppliers/{id}`.
+
+`DELETE /api/suppliers/{id}/photo` — remove a foto. Só supervisor.
+
+**200 OK** nos dois casos — `SupplierResponse` atualizado.
 
 ---
 
@@ -659,7 +688,7 @@ Com `?kitchenId=1`, devolve só os fornecedores ativos da cozinha, ordenados por
 
 `GET /api/products?name=&categoryId=&active=&page=0&size=20&sort=name,asc`
 
-Todos os filtros opcionais. Resposta é um `Page<ProductResponse>` do Spring.
+Todos os filtros opcionais. A busca por `name` não diferencia maiúsculas nem acentos (`acucar` acha `Açúcar`). Resposta é um `Page<ProductResponse>` do Spring.
 
 ### 8.4 Atualizar
 
@@ -1063,6 +1092,26 @@ Dá baixa de um produto sem escolher o lote: tira dos lotes que **vencem primeir
 
 `balanceAfter` é o saldo do lote logo depois da movimentação. `requisitionId` vem preenchido nas baixas de uma aprovação e no estorno dela. Ajuste para o mesmo saldo não gera movimentação. Movimentações anteriores a esta versão não existem: o histórico começa no deploy.
 
+### 9.10 Ranking de validade
+
+`GET /api/stock-batches/ranking?kitchenId=1&limit=10` — supervisor e estoquista.
+
+`kitchenId` é obrigatório e precisa ser a cozinha do usuário (**403** caso contrário); `limit` vai de 1 a 100, padrão 10.
+
+**200 OK** — do vencimento mais próximo para o mais distante:
+
+```json
+[
+  { "position": 1, "batchId": 8, "expirationDate": "2024-10-04", "score": 20000 }
+]
+```
+
+Entram lotes `ACTIVE`, com saldo positivo e validade preenchida. O ranking é uma projeção no Redis; o PostgreSQL continua sendo a fonte de verdade.
+
+**Erros:** **400** para `kitchenId` ou `limit` inválidos; **503** com o Redis indisponível.
+
+Detalhes em [`redis-expiration-ranking.md`](redis-expiration-ranking.md).
+
 ---
 
 ## 10. Inventários
@@ -1307,13 +1356,46 @@ Os três filtros são opcionais e **combinam**; informe pelo menos um (sem nenhu
 
 `GET /api/requisitions/{id}` → **200** com `RequisitionResponse`. O comprador só abre as **próprias** requisições; o supervisor, qualquer uma da cozinha (**403** caso contrário). **404** se não existir.
 
+### 11.11 Pré-listas de compra
+
+`/api/pre-lists` — supervisor e comprador; somente leitura. As pré-listas são importadas do banco do 1º ano e não são criadas pela API.
+
+`GET /api/pre-lists?kitchenId=1` → cabeçalhos das listas, da mais recente para a mais antiga. `kitchenId` é opcional: sem ele, vale a cozinha do usuário (usuário sem cozinha recebe lista vazia); se enviado, precisa ser a própria cozinha (**403** caso contrário).
+
+```json
+[
+  { "id": 3, "listDate": "2026-10-20", "sourceId": 12, "kitchenId": 1, "items": null }
+]
+```
+
+`GET /api/pre-lists/{id}` → a lista com os itens:
+
+```json
+{
+  "id": 3,
+  "listDate": "2026-10-20",
+  "sourceId": 12,
+  "kitchenId": 1,
+  "items": [
+    {
+      "id": 9,
+      "product": { "id": 42, "name": "Farinha de trigo", "photoUrl": null },
+      "supplier": { "id": 7, "legalName": "Fornecedor X" },
+      "quantity": 10.000
+    }
+  ]
+}
+```
+
+Lista sem cozinha (importada antes da V018) fica visível por id para todos com acesso à rota, mas não aparece na listagem. **Erros:** **403** se a lista for de outra cozinha; **404** se não existir.
+
 ---
 
 ## 12. Alertas
 
 `/api/alerts`
 
-Notificações da cozinha. O `type` é texto livre; hoje existem:
+Notificações da cozinha, geradas pela própria API e pelo banco (triggers, procedures e job diário). A única criação por rota é o aviso de produto não cadastrado (12.6). O `type` é texto livre; hoje existem:
 
 | `type` | `severity` | Quando nasce | Para quem |
 |---|---|---|---|
@@ -1323,32 +1405,18 @@ Notificações da cozinha. O `type` é texto livre; hoje existem:
 | `ACCESS_REQUEST` | `MEDIUM` | pedido de entrada na cozinha (4.6). `refKey` = id do pedido | supervisores |
 | `REQUISITION_SUBMITTED` | `MEDIUM` | requisição enviada para análise (11.6). `refKey` = id da requisição | supervisores |
 | `REQUISITION_APPROVED` / `REQUISITION_REJECTED` | `MEDIUM` | requisição decidida (11.7, 11.8). `refKey` = id da requisição | quem pediu |
-| `UNREGISTERED_PRODUCT` | `MEDIUM` | estoquista escaneou um produto fora do catálogo (12.7). `refKey` = código de barras | supervisores |
+| `UNREGISTERED_PRODUCT` | `MEDIUM` | estoquista escaneou um produto fora do catálogo (12.6). `refKey` = código de barras | supervisores |
+| `MEMBER_LEFT` | `LOW` | usuário saiu da cozinha (2.9). `refKey` = id do usuário | supervisores |
 
 Os alertas automáticos não se repetem enquanto houver outro igual que ninguém leu.
 
-**Quem vê o quê:** as consultas (12.2, 12.3) e as leituras (12.4, 12.6) são abertas a **qualquer usuário da cozinha**, mas cada um só enxerga os alertas que são para ele: os endereçados à pessoa, os do perfil dela e — para supervisor e estoquista — os da cozinha inteira. O comprador só recebe os das próprias requisições. Alerta de outra pessoa → **403**.
+**Quem vê o quê:** as consultas (12.2, 12.3) e as leituras (12.4, 12.5) são abertas a **qualquer usuário da cozinha**, mas cada um só enxerga os alertas que são para ele: os endereçados à pessoa, os do perfil dela e — para supervisor e estoquista — os da cozinha inteira. O comprador só recebe os das próprias requisições. Alerta de outra pessoa → **403**.
 
 **Lido é por pessoa:** `read` é a leitura de **quem está chamando**. Um estoquista ler um alerta não o tira de "não lido" do supervisor. A exceção são os alertas `ACCESS_REQUEST` e `REQUISITION_SUBMITTED`, que passam a `read = true` para todos quando o pedido ou a requisição é decidido.
 
-### 12.1 Criar
+### 12.1 Formato
 
-`POST /api/alerts`
-
-```json
-{
-  "type": "EXPIRING",
-  "severity": "HIGH",
-  "batchId": 101,
-  "productId": 42,
-  "kitchenId": 1,
-  "message": "Lote LOT-2026-001 vence em 3 dias"
-}
-```
-
-**Validações:** `type` obrigatório, até 30; `severity` obrigatório (`LOW` | `MEDIUM` | `HIGH` | `CRITICAL`); `kitchenId` obrigatório no escopo do usuário; `message` obrigatório, até 255; `batchId` e `productId` opcionais — se `batchId` vier, o lote precisa ser da mesma cozinha (e do `productId`, se informado) → **409**.
-
-**201 Created** — `AlertResponse`:
+`AlertResponse`:
 
 ```json
 {
@@ -1365,7 +1433,7 @@ Os alertas automáticos não se repetem enquanto houver outro igual que ninguém
 }
 ```
 
-`refKey` diz o que originou o alerta (id da requisição, id do pedido de entrada ou código de barras; `null` nos de estoque e validade): o app usa para saber aonde levar a pessoa quando ela toca na notificação. Só supervisor cria alerta por aqui.
+`refKey` diz o que originou o alerta (id da requisição, id do pedido de entrada ou código de barras; `null` nos de estoque e validade): o app usa para saber aonde levar a pessoa quando ela toca na notificação.
 
 ### 12.2 Listar por cozinha
 
@@ -1381,15 +1449,11 @@ Os alertas que o usuário logado enxerga naquela cozinha, do mais recente para o
 
 `PATCH /api/alerts/{id}/read` → **200** com `AlertResponse` (`read = true`). Grava a leitura só para o usuário logado; repetir a chamada não tem efeito.
 
-### 12.5 Deletar
-
-`DELETE /api/alerts/{id}` → **204**. Só supervisor.
-
-### 12.6 Marcar todos como lidos
+### 12.5 Marcar todos como lidos
 
 `PATCH /api/alerts/read-all?kitchenId=1` → **204**. Marca como lidos, para o usuário logado, todos os alertas não lidos que ele enxerga na cozinha.
 
-### 12.7 Produto não cadastrado
+### 12.6 Produto não cadastrado
 
 `POST /api/alerts/unregistered-product` — supervisor e estoquista.
 
@@ -1544,6 +1608,7 @@ Uma linha por elemento (`vw_ui_click_ranking`), ordenada por plataforma e posiç
 |:-------|:----|
 | 200 | Sucesso em GET/PUT/PATCH com corpo |
 | 201 | Criação (POST) — com header `Location` |
+| 202 | Pedido de redefinição de senha aceito (`POST /api/auth/password/forgot`) |
 | 204 | Sucesso sem corpo (activate/deactivate, changePassword, delete, link supplier, set parameters) |
 | 400 | JSON malformado, campo inválido, parâmetro obrigatório ausente ou de tipo errado (ex.: UUID inválido), `sort` inválido, formato de imagem inválido, `IOException` de upload |
 | 401 | Token ausente/inválido/expirado ou credenciais inválidas no login |
@@ -1556,7 +1621,7 @@ Uma linha por elemento (`vw_ui_click_ranking`), ordenada por plataforma e posiç
 | 502 | Falha em serviço externo (Cloudinary, Open Food Facts) |
 | 429 | Muitas tentativas de login seguidas (bloqueio de 15 minutos por e-mail + IP), de buscas de cozinha por código ou de buscas na descoberta de cozinhas |
 | 500 | Erro inesperado |
-| 503 | Banco indisponível ao validar o token, ou login com Google não configurado no ambiente |
+| 503 | Banco indisponível ao validar o token, Redis indisponível (redefinição de senha, ranking de validade) ou login com Google não configurado no ambiente |
 
 **Formato-padrão do corpo de erro** (RFC 7807 `application/problem+json`):
 
@@ -1570,7 +1635,7 @@ Uma linha por elemento (`vw_ui_click_ranking`), ordenada por plataforma e posiç
 }
 ```
 
-**Erros com `code`:** alguns erros trazem um campo `code`, para o app tratar o caso sem depender do texto de `detail`. Hoje só o login com Google usa (1.5): `REGISTRATION_REQUIRED`, `INVALID_GOOGLE_TOKEN`, `EMAIL_NOT_VERIFIED` e `GOOGLE_LOGIN_UNAVAILABLE`.
+**Erros com `code`:** alguns erros trazem um campo `code`, para o app tratar o caso sem depender do texto de `detail`. Hoje usam o login com Google (1.5: `REGISTRATION_REQUIRED`, `INVALID_GOOGLE_TOKEN`, `EMAIL_NOT_VERIFIED`, `GOOGLE_LOGIN_UNAVAILABLE`) e a redefinição de senha (1.6: `INVALID_RESET_CODE`, `INVALID_RESET_TOKEN`).
 
 **Erros de validação** incluem `errors[]` com cada campo violado:
 
